@@ -57,6 +57,9 @@ career-agent:
   rag:
     default-top-k: ${RAG_DEFAULT_TOP_K:8}
     max-top-k: ${RAG_MAX_TOP_K:20}
+  chunking:
+    target-tokens: ${CHUNK_TARGET_TOKENS:700}
+    overlap-tokens: ${CHUNK_OVERLAP_TOKENS:100}
   agent:
     max-retries: ${AGENT_MAX_RETRIES:2}
     task-thread-pool-size: ${AGENT_TASK_THREAD_POOL_SIZE:4}

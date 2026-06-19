@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huatai.careeragent.document.Document;
 import com.huatai.careeragent.document.DocumentRepository;
+import com.huatai.careeragent.knowledge.chunk.DocumentChunkRepository;
 import com.huatai.careeragent.user.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
@@ -33,7 +35,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "career-agent.storage.upload-dir=target/test-uploads",
-        "career-agent.storage.max-upload-size=20MB"
+        "career-agent.storage.max-upload-size=20MB",
+        "career-agent.chunking.target-tokens=8",
+        "career-agent.chunking.overlap-tokens=2"
 })
 class FileControllerTest {
     private static final Path TEST_UPLOAD_DIR = Path.of("target/test-uploads");
@@ -51,10 +55,17 @@ class FileControllerTest {
     private DocumentRepository documentRepository;
 
     @Autowired
+    private DocumentChunkRepository documentChunkRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private UserRepository userRepository;
 
     @AfterEach
     void cleanUp() throws Exception {
+        documentChunkRepository.deleteAll();
         documentRepository.deleteAll();
         uploadedFileRepository.deleteAll();
         userRepository.deleteAll();
@@ -216,6 +227,137 @@ class FileControllerTest {
                 .andExpect(jsonPath("$.error.code").value("FILE_NOT_FOUND"));
     }
 
+    @Test
+    void chunksParsedDocumentAndListsChunks() throws Exception {
+        String token = registerAndLogin();
+        Long fileId = uploadTextFile(token, "resume.md", "RESUME", """
+                # Resume
+                Java backend developer with Spring Boot PostgreSQL Redis
+
+                项目经历
+                Built CareerAgent upload parse chunk pipeline
+                """);
+        Long documentId = parseFile(token, fileId);
+
+        mockMvc.perform(post("/api/documents/{documentId}/chunks", documentId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.documentId").value(documentId))
+                .andExpect(jsonPath("$.data.chunkCount").value(4))
+                .andExpect(jsonPath("$.data.chunks[0].chunkIndex").value(0))
+                .andExpect(jsonPath("$.data.chunks[0].sourceType").value("RESUME"))
+                .andExpect(jsonPath("$.data.chunks[0].sourceTitle").value("resume.md"))
+                .andExpect(jsonPath("$.data.chunks[0].sourceLocator").exists())
+                .andExpect(jsonPath("$.data.chunks[0].tokenCount").exists());
+
+        mockMvc.perform(get("/api/documents/{documentId}/chunks", documentId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.chunkCount").value(4))
+                .andExpect(jsonPath("$.data.chunks[1].sourceLocator").value(startsWith("Resume")));
+
+        mockMvc.perform(post("/api/documents/{documentId}/chunks", documentId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.chunkCount").value(4));
+
+        assertThat(documentChunkRepository.findByDocumentIdAndUserIdOrderByChunkIndexAsc(documentId, currentUserId(documentId)))
+                .hasSize(4);
+    }
+
+    @Test
+    void rejectsChunkingOtherUsersDocument() throws Exception {
+        String ownerToken = registerAndLogin();
+        String otherToken = registerAndLogin();
+        Long fileId = uploadTextFile(ownerToken, "jd.txt", "JD", "Java engineer JD");
+        Long documentId = parseFile(ownerToken, fileId);
+
+        mockMvc.perform(post("/api/documents/{documentId}/chunks", documentId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("DOCUMENT_NOT_FOUND"));
+    }
+
+    @Test
+    void embedsChunksAndSearchesCurrentUsersKnowledge() throws Exception {
+        String ownerToken = registerAndLogin();
+        Long resumeFileId = uploadTextFile(ownerToken, "resume.md", "RESUME", """
+                # Resume
+                Spring Boot JWT PostgreSQL Redis
+
+                项目经历
+                CareerAgent document parsing chunk embedding retrieval
+                """);
+        Long resumeDocumentId = parseFile(ownerToken, resumeFileId);
+        chunkDocument(ownerToken, resumeDocumentId);
+
+        String otherToken = registerAndLogin();
+        Long otherFileId = uploadTextFile(otherToken, "other.md", "NOTE", "unrelated private notes about finance");
+        Long otherDocumentId = parseFile(otherToken, otherFileId);
+        chunkDocument(otherToken, otherDocumentId);
+
+        mockMvc.perform(post("/api/documents/{documentId}/embeddings", resumeDocumentId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.documentId").value(resumeDocumentId))
+                .andExpect(jsonPath("$.data.embeddedChunkCount").value(3))
+                .andExpect(jsonPath("$.data.model").value("local-hashing-1024"));
+
+        Integer embeddedCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM document_chunks WHERE document_id = ? AND embedding IS NOT NULL",
+                Integer.class,
+                resumeDocumentId
+        );
+        assertThat(embeddedCount).isEqualTo(3);
+
+        mockMvc.perform(post("/api/knowledge/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "query": "Spring Boot PostgreSQL",
+                                  "sourceTypes": ["RESUME"],
+                                  "topK": 3,
+                                  "retrievalMode": "HYBRID"
+                                }
+                                """)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].citationId").value(startsWith("chunk_")))
+                .andExpect(jsonPath("$.data.items[0].documentId").value(resumeDocumentId))
+                .andExpect(jsonPath("$.data.items[0].sourceType").value("RESUME"))
+                .andExpect(jsonPath("$.data.items[0].sourceTitle").value("resume.md"))
+                .andExpect(jsonPath("$.data.items[0].content").value(org.hamcrest.Matchers.containsString("Spring Boot")))
+                .andExpect(jsonPath("$.data.items[0].score").exists());
+
+        mockMvc.perform(post("/api/knowledge/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "query": "Spring Boot PostgreSQL",
+                                  "sourceTypes": ["RESUME"],
+                                  "topK": 3,
+                                  "retrievalMode": "KEYWORD"
+                                }
+                                """)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
+    @Test
+    void rejectsEmbeddingOtherUsersDocument() throws Exception {
+        String ownerToken = registerAndLogin();
+        String otherToken = registerAndLogin();
+        Long fileId = uploadTextFile(ownerToken, "resume.txt", "RESUME", "Spring Boot resume");
+        Long documentId = parseFile(ownerToken, fileId);
+        chunkDocument(ownerToken, documentId);
+
+        mockMvc.perform(post("/api/documents/{documentId}/embeddings", documentId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("DOCUMENT_NOT_FOUND"));
+    }
+
     private Long uploadTextFile(String token, String fileName, String fileType, String content) throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -246,6 +388,16 @@ class FileControllerTest {
                 .getContentAsString();
 
         return objectMapper.readTree(response).path("data").path("documentId").asLong();
+    }
+
+    private void chunkDocument(String token, Long documentId) throws Exception {
+        mockMvc.perform(post("/api/documents/{documentId}/chunks", documentId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    private Long currentUserId(Long documentId) {
+        return documentRepository.findById(documentId).orElseThrow().getUserId();
     }
 
     private String registerAndLogin() throws Exception {
