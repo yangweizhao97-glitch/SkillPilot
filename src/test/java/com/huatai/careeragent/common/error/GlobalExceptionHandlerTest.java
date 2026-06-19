@@ -1,5 +1,6 @@
 package com.huatai.careeragent.common.error;
 
+import com.huatai.careeragent.common.security.JwtService;
 import com.huatai.careeragent.common.api.ApiResponse;
 import com.huatai.careeragent.common.trace.TraceIdFilter;
 import jakarta.validation.Valid;
@@ -11,6 +12,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -31,11 +33,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest
+@WebMvcTest(controllers = GlobalExceptionHandlerTest.TestController.class)
 @Import({GlobalExceptionHandler.class, TraceIdFilter.class, GlobalExceptionHandlerTest.TestControllerConfig.class})
 class GlobalExceptionHandlerTest {
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private JwtService jwtService;
 
     @Test
     @WithMockUser
