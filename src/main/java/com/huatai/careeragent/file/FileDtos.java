@@ -27,4 +27,14 @@ public final class FileDtos {
             );
         }
     }
+
+    public record ParseFileResponse(
+            Long fileId,
+            Long documentId,
+            ParseStatus parseStatus
+    ) {
+        public static ParseFileResponse success(UploadedFile uploadedFile, Long documentId) {
+            return new ParseFileResponse(uploadedFile.getId(), documentId, uploadedFile.getParseStatus());
+        }
+    }
 }

@@ -3,6 +3,7 @@ package com.huatai.careeragent.file;
 import com.huatai.careeragent.common.api.ApiResponse;
 import com.huatai.careeragent.common.api.PageResponse;
 import com.huatai.careeragent.common.security.CurrentUser;
+import com.huatai.careeragent.file.FileDtos.ParseFileResponse;
 import com.huatai.careeragent.file.FileDtos.UploadedFileResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,5 +44,10 @@ public class FileController {
     @GetMapping("/{fileId}")
     public ApiResponse<UploadedFileResponse> get(CurrentUser currentUser, @PathVariable Long fileId) {
         return ApiResponse.ok(fileService.get(currentUser.userId(), fileId));
+    }
+
+    @PostMapping("/{fileId}/parse")
+    public ApiResponse<ParseFileResponse> parse(CurrentUser currentUser, @PathVariable Long fileId) {
+        return ApiResponse.ok(fileService.parse(currentUser.userId(), fileId));
     }
 }

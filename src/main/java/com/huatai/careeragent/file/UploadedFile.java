@@ -114,4 +114,23 @@ public class UploadedFile {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    public void markParseSuccess(String parsedText) {
+        this.parseStatus = ParseStatus.SUCCESS;
+        this.parsedText = parsedText;
+        this.errorMessage = null;
+    }
+
+    public void markParseFailed(String errorMessage) {
+        this.parseStatus = ParseStatus.FAILED;
+        this.errorMessage = summarize(errorMessage);
+    }
+
+    private String summarize(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500);
+    }
 }

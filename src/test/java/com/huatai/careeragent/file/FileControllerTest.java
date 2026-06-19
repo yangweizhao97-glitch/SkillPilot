@@ -2,6 +2,8 @@ package com.huatai.careeragent.file;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huatai.careeragent.document.Document;
+import com.huatai.careeragent.document.DocumentRepository;
 import com.huatai.careeragent.user.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -45,10 +48,14 @@ class FileControllerTest {
     private UploadedFileRepository uploadedFileRepository;
 
     @Autowired
+    private DocumentRepository documentRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @AfterEach
     void cleanUp() throws Exception {
+        documentRepository.deleteAll();
         uploadedFileRepository.deleteAll();
         userRepository.deleteAll();
         FileSystemUtils.deleteRecursively(TEST_UPLOAD_DIR);
@@ -145,6 +152,70 @@ class FileControllerTest {
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
 
+    @Test
+    void parsesFileAndCreatesDocument() throws Exception {
+        String token = registerAndLogin();
+        Long fileId = uploadTextFile(token, "resume.md", "RESUME", "# Resume\nJava backend developer");
+
+        String response = mockMvc.perform(post("/api/files/{fileId}/parse", fileId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fileId").value(fileId))
+                .andExpect(jsonPath("$.data.parseStatus").value("SUCCESS"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long documentId = objectMapper.readTree(response).path("data").path("documentId").asLong();
+        UploadedFile uploadedFile = uploadedFileRepository.findById(fileId).orElseThrow();
+        Document document = documentRepository.findById(documentId).orElseThrow();
+        assertThat(uploadedFile.getParseStatus()).isEqualTo(ParseStatus.SUCCESS);
+        assertThat(uploadedFile.getParsedText()).contains("Java backend developer");
+        assertThat(document.getFileId()).isEqualTo(fileId);
+        assertThat(document.getDocType()).isEqualTo(FileType.RESUME);
+        assertThat(document.getContentText()).contains("Java backend developer");
+    }
+
+    @Test
+    void marksFileFailedWhenParsedContentIsEmpty() throws Exception {
+        String token = registerAndLogin();
+        Long fileId = uploadTextFile(token, "blank.txt", "NOTE", "   \n\t  ");
+
+        mockMvc.perform(post("/api/files/{fileId}/parse", fileId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("DOCUMENT_CONTENT_EMPTY"));
+
+        UploadedFile uploadedFile = uploadedFileRepository.findById(fileId).orElseThrow();
+        assertThat(uploadedFile.getParseStatus()).isEqualTo(ParseStatus.FAILED);
+        assertThat(uploadedFile.getErrorMessage()).contains("Document content is empty");
+        assertThat(documentRepository.findByFileIdAndUserId(fileId, uploadedFile.getUserId())).isEmpty();
+    }
+
+    @Test
+    void repeatParseOverwritesExistingDocument() throws Exception {
+        String token = registerAndLogin();
+        Long fileId = uploadTextFile(token, "jd.txt", "JD", "Java engineer JD");
+
+        Long firstDocumentId = parseFile(token, fileId);
+        Long secondDocumentId = parseFile(token, fileId);
+
+        assertThat(secondDocumentId).isEqualTo(firstDocumentId);
+        assertThat(documentRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsParseForOtherUsersFile() throws Exception {
+        String ownerToken = registerAndLogin();
+        String otherToken = registerAndLogin();
+        Long fileId = uploadTextFile(ownerToken, "private.txt", "NOTE", "private notes");
+
+        mockMvc.perform(post("/api/files/{fileId}/parse", fileId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("FILE_NOT_FOUND"));
+    }
+
     private Long uploadTextFile(String token, String fileName, String fileType, String content) throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -163,6 +234,18 @@ class FileControllerTest {
                 .getContentAsString();
 
         return objectMapper.readTree(response).path("data").path("fileId").asLong();
+    }
+
+    private Long parseFile(String token, Long fileId) throws Exception {
+        String response = mockMvc.perform(post("/api/files/{fileId}/parse", fileId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.parseStatus").value("SUCCESS"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        return objectMapper.readTree(response).path("data").path("documentId").asLong();
     }
 
     private String registerAndLogin() throws Exception {
