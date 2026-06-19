@@ -21,6 +21,8 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      repositories:
+        enabled: false
   servlet:
     multipart:
       max-file-size: ${MAX_UPLOAD_SIZE:20MB}
@@ -45,6 +47,7 @@ career-agent:
     jwt-expires-seconds: ${JWT_EXPIRES_SECONDS:7200}
   storage:
     upload-dir: ${UPLOAD_DIR:./data/uploads}
+    max-upload-size: ${MAX_UPLOAD_SIZE:20MB}
   llm:
     provider: ${LLM_PROVIDER:DASHSCOPE}
     dashscope-api-key: ${DASHSCOPE_API_KEY:}
