@@ -2,12 +2,42 @@
 .env.*
 !.env.example
 
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
 __pycache__/
 .pytest_cache/
 *.pyc
 .DS_Store
 
 data/*.db
+data/uploads/
+
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+.idea/
+*.iws
+*.iml
+*.ipr
+
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+.vscode/
 
 agent-skills/
-docs/

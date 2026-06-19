@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: career-agent
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/career_agent}
+    username: ${POSTGRES_USER:career_agent}
+    password: ${POSTGRES_PASSWORD:career_agent_dev_password}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_SIZE:20MB}
+      max-request-size: ${MAX_UPLOAD_SIZE:20MB}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+career-agent:
+  security:
+    jwt-secret: ${JWT_SECRET:change-me-to-a-long-random-secret-at-least-32-characters}
+    jwt-expires-seconds: ${JWT_EXPIRES_SECONDS:7200}
+  storage:
+    upload-dir: ${UPLOAD_DIR:./data/uploads}
+  llm:
+    provider: ${LLM_PROVIDER:DASHSCOPE}
+    dashscope-api-key: ${DASHSCOPE_API_KEY:}
+    chat-model: ${CHAT_MODEL:qwen-flash}
+    embedding-model: ${EMBEDDING_MODEL:text-embedding-v4}
+    embedding-dimension: ${EMBEDDING_DIMENSION:1024}
+  rag:
+    default-top-k: ${RAG_DEFAULT_TOP_K:8}
+    max-top-k: ${RAG_MAX_TOP_K:20}
+  agent:
+    max-retries: ${AGENT_MAX_RETRIES:2}
+    task-thread-pool-size: ${AGENT_TASK_THREAD_POOL_SIZE:4}
