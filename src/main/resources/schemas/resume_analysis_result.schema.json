@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://career-agent.local/schemas/resume_analysis_result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "highlights", "weaknesses", "projectIssues", "suggestions", "risks", "nextActions", "citations"],
+  "properties": {
+    "summary": {"type": "string", "minLength": 1},
+    "highlights": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "weaknesses": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "projectIssues": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "suggestions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "risks": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "nextActions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "citations": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://career-agent.local/schemas/interview_questions.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "questionType", "difficulty", "expectedPoints", "citations", "noCitationReason"],
+        "properties": {
+          "question": {"type": "string", "minLength": 1},
+          "questionType": {"type": "string", "enum": ["TECHNICAL", "PROJECT", "BEHAVIORAL", "SYSTEM_DESIGN"]},
+          "difficulty": {"type": "string", "enum": ["EASY", "MEDIUM", "HARD"]},
+          "expectedPoints": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "citations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "noCitationReason": {"type": ["string", "null"]}
+        },
+        "anyOf": [
+          {"properties": {"citations": {"minItems": 1}}},
+          {"properties": {"noCitationReason": {"type": "string", "minLength": 1}}}
+        ]
+      }
+    }
+  }
+}

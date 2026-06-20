@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://career-agent.local/schemas/job_match_result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["matchScore", "summary", "strengths", "weaknesses", "missingSkills", "suggestedResumeChanges", "citations"],
+  "properties": {
+    "matchScore": {"type": "integer", "minimum": 0, "maximum": 100},
+    "summary": {"type": "string", "minLength": 1},
+    "strengths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "weaknesses": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "missingSkills": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "suggestedResumeChanges": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "citations": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  }
+}

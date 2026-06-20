@@ -51,9 +51,13 @@ career-agent:
   llm:
     provider: ${LLM_PROVIDER:DASHSCOPE}
     dashscope-api-key: ${DASHSCOPE_API_KEY:}
+    base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
     chat-model: ${CHAT_MODEL:qwen-flash}
     embedding-model: ${EMBEDDING_MODEL:text-embedding-v4}
     embedding-dimension: ${EMBEDDING_DIMENSION:1024}
+    connect-timeout: ${LLM_CONNECT_TIMEOUT:5s}
+    read-timeout: ${LLM_READ_TIMEOUT:60s}
+    max-retries: ${LLM_MAX_RETRIES:2}
   rag:
     default-top-k: ${RAG_DEFAULT_TOP_K:8}
     max-top-k: ${RAG_MAX_TOP_K:20}
@@ -62,4 +66,5 @@ career-agent:
     overlap-tokens: ${CHUNK_OVERLAP_TOKENS:100}
   agent:
     max-retries: ${AGENT_MAX_RETRIES:2}
+    initial-retry-delay: ${AGENT_INITIAL_RETRY_DELAY:100ms}
     task-thread-pool-size: ${AGENT_TASK_THREAD_POOL_SIZE:4}

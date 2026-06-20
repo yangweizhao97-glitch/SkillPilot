@@ -2,6 +2,7 @@ package com.huatai.careeragent.task.log;
 
 import com.huatai.careeragent.task.AgentTask;
 import com.huatai.careeragent.task.WorkflowStatus;
+import com.huatai.careeragent.llm.LlmResponse.TokenUsage;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -87,6 +88,36 @@ public class AgentExecutionLog {
 
     public static AgentExecutionLog failure(AgentTask task, String errorMessage) {
         return new AgentExecutionLog(task, WorkflowStatus.FAILED, ExecutionLogStatus.FAILED, errorMessage);
+    }
+
+    public static AgentExecutionLog agentExecution(
+            Long userId,
+            Long taskId,
+            String traceId,
+            String agentName,
+            String stepName,
+            String inputSummary,
+            String outputSummary,
+            ExecutionLogStatus status,
+            long durationMs,
+            TokenUsage usage,
+            String errorMessage
+    ) {
+        AgentExecutionLog log = new AgentExecutionLog();
+        log.userId = userId;
+        log.taskId = taskId;
+        log.traceId = traceId;
+        log.agentName = agentName;
+        log.stepName = stepName;
+        log.inputSummary = log.summarize(inputSummary);
+        log.outputSummary = log.summarize(outputSummary);
+        log.status = status;
+        log.durationMs = durationMs;
+        log.promptTokens = usage == null ? null : usage.promptTokens();
+        log.completionTokens = usage == null ? null : usage.completionTokens();
+        log.totalTokens = usage == null ? null : usage.totalTokens();
+        log.errorMessage = log.summarize(errorMessage);
+        return log;
     }
 
     private String summarize(String value) {
