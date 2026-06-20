@@ -45,7 +45,11 @@ public record LlmRequest(
     }
 
     public static String markUntrusted(String content) {
-        return UNTRUSTED_PREFIX + (content == null ? "" : content) + UNTRUSTED_SUFFIX;
+        return UNTRUSTED_PREFIX + escapeDelimiters(content == null ? "" : content) + UNTRUSTED_SUFFIX;
+    }
+
+    private static String escapeDelimiters(String content) {
+        return content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     public record Message(@NotBlank String role, @NotBlank String content) {

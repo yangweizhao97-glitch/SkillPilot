@@ -6,6 +6,8 @@ import com.huatai.careeragent.agent.tool.ToolCallLogRepository;
 import com.huatai.careeragent.document.Document;
 import com.huatai.careeragent.document.DocumentRepository;
 import com.huatai.careeragent.file.FileType;
+import com.huatai.careeragent.file.UploadedFileRepository;
+import com.huatai.careeragent.knowledge.chunk.DocumentChunkRepository;
 import com.huatai.careeragent.interview.InterviewQuestionRepository;
 import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
@@ -28,11 +30,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,11 +44,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "career-agent.agent.initial-retry-delay=0ms")
+@SpringBootTest(properties = {
+        "career-agent.agent.initial-retry-delay=0ms",
+        "career-agent.storage.upload-dir=target/workflow-test-uploads",
+        "career-agent.chunking.target-tokens=20",
+        "career-agent.chunking.overlap-tokens=4"
+})
 @AutoConfigureMockMvc
 class CareerWorkflowIntegrationTest {
     @Autowired private MockMvc mockMvc;
@@ -59,13 +69,15 @@ class CareerWorkflowIntegrationTest {
     @Autowired private JobRepository jobRepository;
     @Autowired private ResumeRepository resumeRepository;
     @Autowired private DocumentRepository documentRepository;
+    @Autowired private DocumentChunkRepository documentChunkRepository;
+    @Autowired private UploadedFileRepository uploadedFileRepository;
     @Autowired private UserRepository userRepository;
 
     @MockitoBean
     private LlmClient llmClient;
 
     @AfterEach
-    void cleanUp() {
+    void cleanUp() throws Exception {
         awaitNoRunningTasks();
         toolCallLogRepository.deleteAll();
         executionLogRepository.deleteAll();
@@ -76,8 +88,11 @@ class CareerWorkflowIntegrationTest {
         taskRepository.deleteAll();
         jobRepository.deleteAll();
         resumeRepository.deleteAll();
+        documentChunkRepository.deleteAll();
         documentRepository.deleteAll();
+        uploadedFileRepository.deleteAll();
         userRepository.deleteAll();
+        org.springframework.util.FileSystemUtils.deleteRecursively(Path.of("target/workflow-test-uploads"));
     }
 
     @Test
@@ -192,6 +207,73 @@ class CareerWorkflowIntegrationTest {
         awaitStatus(taskId, WorkflowStatus.SUCCESS);
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(finalReportRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void runsMvpSmokeFlowFromUploadToFinalReport() throws Exception {
+        AuthenticatedUser owner = registerAndLogin();
+        when(llmClient.complete(any()))
+                .thenReturn(response(jobMatchJson()))
+                .thenReturn(response(resumeAnalysisJson()))
+                .thenReturn(response(interviewQuestionsJson()));
+
+        Long resumeDocumentId = uploadParseChunkAndEmbed(
+                owner.token(), "resume.txt", "RESUME",
+                "Java Spring Boot PostgreSQL Redis backend engineer with reliable service experience"
+        );
+        String resumeResponse = mockMvc.perform(post("/api/resumes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentId\":" + resumeDocumentId + ",\"title\":\"Backend Resume\"}")
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long resumeId = objectMapper.readTree(resumeResponse).path("data").path("resumeId").asLong();
+
+        Long jobDocumentId = uploadParseChunkAndEmbed(
+                owner.token(), "job.txt", "JD",
+                "Senior backend engineer building Spring services with PostgreSQL and Redis"
+        );
+        String jobResponse = mockMvc.perform(post("/api/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentId\":" + jobDocumentId
+                                + ",\"company\":\"Example Inc\",\"position\":\"Senior Backend Engineer\"}")
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long jobId = objectMapper.readTree(jobResponse).path("data").path("jobId").asLong();
+
+        Long taskId = createTask(owner.token(), resumeId, jobId, null);
+        awaitStatus(taskId, WorkflowStatus.SUCCESS);
+
+        mockMvc.perform(get("/api/career-tasks/{taskId}", taskId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.progress").value(100));
+        mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(10));
+        mockMvc.perform(get("/api/reports").header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETE"));
+    }
+
+    private Long uploadParseChunkAndEmbed(String token, String fileName, String fileType, String content)
+            throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", fileName, "text/plain", content.getBytes());
+        String uploadResponse = mockMvc.perform(multipart("/api/files/upload")
+                        .file(file).param("fileType", fileType)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long fileId = objectMapper.readTree(uploadResponse).path("data").path("fileId").asLong();
+        String parseResponse = mockMvc.perform(post("/api/files/{fileId}/parse", fileId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long documentId = objectMapper.readTree(parseResponse).path("data").path("documentId").asLong();
+        mockMvc.perform(post("/api/documents/{documentId}/chunks", documentId)
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        mockMvc.perform(post("/api/documents/{documentId}/embeddings", documentId)
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        return documentId;
     }
 
     private Long createTask(String token, Long resumeId, Long jobId, String enabledStep) throws Exception {
