@@ -135,7 +135,7 @@ class ToolExecutorIntegrationTest {
         ToolResponse<?> agentDenied = toolExecutor.execute(new ToolRequest<>(
                 GetJobDescriptionTool.NAME,
                 new GetJobDescriptionTool.Input(resources.job().getId()),
-                context(resources, AgentNames.RESUME_ANALYSIS_AGENT)
+                context(resources, "UNKNOWN_AGENT")
         ));
 
         toolRegistry.register(new SensitiveEchoTool());

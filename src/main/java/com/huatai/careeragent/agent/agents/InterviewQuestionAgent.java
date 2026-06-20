@@ -1,0 +1,66 @@
+package com.huatai.careeragent.agent.agents;
+
+import com.huatai.careeragent.agent.core.Agent;
+import com.huatai.careeragent.agent.core.AgentContext;
+import com.huatai.careeragent.agent.core.AgentResult;
+import com.huatai.careeragent.agent.schema.SchemaRepairService;
+import com.huatai.careeragent.agent.schema.SchemaRepairService.RepairResult;
+import com.huatai.careeragent.agent.tool.AgentNames;
+import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
+import com.huatai.careeragent.agent.tool.GetResumeTool;
+import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.interview.InterviewQuestionService;
+import com.huatai.careeragent.interview.InterviewQuestionService.InterviewQuestionResponse;
+import com.huatai.careeragent.llm.LlmClient;
+import com.huatai.careeragent.llm.LlmRequest;
+import com.huatai.careeragent.llm.LlmResponse;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+@Component
+public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Input, List<InterviewQuestionResponse>> {
+    private final AgentToolGateway tools;
+    private final AgentOutputSupport outputSupport;
+    private final LlmClient llmClient;
+    private final SchemaRepairService schemaRepairService;
+    private final InterviewQuestionService questionService;
+
+    public InterviewQuestionAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, LlmClient llmClient,
+                                  SchemaRepairService schemaRepairService, InterviewQuestionService questionService) {
+        this.tools = tools;
+        this.outputSupport = outputSupport;
+        this.llmClient = llmClient;
+        this.schemaRepairService = schemaRepairService;
+        this.questionService = questionService;
+    }
+
+    @Override public String name() { return AgentNames.INTERVIEW_QUESTION_AGENT; }
+    @Override public String stepName() { return "GENERATING_QUESTIONS"; }
+
+    @Override
+    public AgentResult<List<InterviewQuestionResponse>> execute(Input input, AgentContext context) {
+        GetResumeTool.Output resume = tools.resume(input.resumeId(), context, name());
+        GetJobDescriptionTool.Output job = tools.job(input.jobId(), context, name());
+        SearchUserKnowledgeBaseTool.Output knowledge = tools.search(job.position() + " interview projects", context, name());
+        LlmResponse response = llmClient.complete(LlmRequest.secured(
+                "You generate personalized interview questions. Return strict JSON only.",
+                "Return a questions array. Each item requires question, questionType, difficulty, expectedPoints, "
+                        + "citations and noCitationReason. Use a supplied citationId or explain why no citation applies.",
+                List.of(outputSupport.json(resume), outputSupport.json(job), outputSupport.json(knowledge)),
+                context.traceId(), true
+        ));
+        RepairResult validated = schemaRepairService.validateOrRepair(
+                "interview_questions.schema.json", response.content(), context.traceId()
+        );
+        outputSupport.validateCitations(validated.value(), knowledge.items());
+        List<InterviewQuestionResponse> saved = questionService.save(
+                context.userId(), input.resumeId(), input.jobId(), validated.value()
+        );
+        return AgentResult.success(saved, "interviewQuestionCount=" + saved.size(),
+                outputSupport.totalUsage(response.usage(), validated));
+    }
+
+    @Override public String summarizeInput(Input input) { return "resumeId=" + input.resumeId() + ",jobId=" + input.jobId(); }
+    public record Input(Long resumeId, Long jobId) { }
+}

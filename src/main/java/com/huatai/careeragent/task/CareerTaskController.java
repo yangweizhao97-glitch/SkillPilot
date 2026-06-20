@@ -42,4 +42,9 @@ public class CareerTaskController {
     public ApiResponse<TaskLogResponse> logs(CurrentUser currentUser, @PathVariable Long taskId) {
         return ApiResponse.ok(taskLogService.list(currentUser.userId(), taskId));
     }
+
+    @PostMapping("/{taskId}/retry")
+    public ApiResponse<CareerTaskResponse> retry(CurrentUser currentUser, @PathVariable Long taskId) {
+        return ApiResponse.ok(careerTaskService.retry(currentUser.userId(), taskId));
+    }
 }

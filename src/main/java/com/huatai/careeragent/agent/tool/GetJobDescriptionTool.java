@@ -30,7 +30,7 @@ public class GetJobDescriptionTool implements Tool<GetJobDescriptionTool.Input, 
 
     @Override
     public Set<String> allowedAgents() {
-        return Set.of(AgentNames.JOB_MATCH_AGENT, AgentNames.INTERVIEW_QUESTION_AGENT);
+        return Set.of(AgentNames.JOB_MATCH_AGENT, AgentNames.RESUME_ANALYSIS_AGENT, AgentNames.INTERVIEW_QUESTION_AGENT);
     }
 
     @Override

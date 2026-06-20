@@ -46,22 +46,39 @@ public class CareerTaskService {
 
     @Transactional
     public CareerTaskResponse create(Long userId, CreateCareerTaskRequest request) {
-        if (resumeRepository.findByIdAndUserId(request.resumeId(), userId).isEmpty()) {
+        return createForSteps(userId, request.resumeId(), request.jobId(), normalizeEnabledSteps(request.enabledSteps()));
+    }
+
+    @Transactional
+    public CareerTaskResponse createForSteps(Long userId, Long resumeId, Long jobId, List<WorkflowStatus> enabledSteps) {
+        if (resumeRepository.findByIdAndUserId(resumeId, userId).isEmpty()) {
             throw new BusinessException("RESUME_NOT_FOUND", "Resume not found", HttpStatus.NOT_FOUND);
         }
-        if (jobRepository.findByIdAndUserId(request.jobId(), userId).isEmpty()) {
+        if (jobId != null && jobRepository.findByIdAndUserId(jobId, userId).isEmpty()) {
             throw new BusinessException("JOB_NOT_FOUND", "Job not found", HttpStatus.NOT_FOUND);
         }
-
-        List<WorkflowStatus> enabledSteps = normalizeEnabledSteps(request.enabledSteps());
+        if ((enabledSteps.contains(WorkflowStatus.MATCHING_JOB) || enabledSteps.contains(WorkflowStatus.GENERATING_QUESTIONS))
+                && jobId == null) {
+            throw new BusinessException("JOB_REQUIRED", "Job is required for the selected steps", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
         String traceId = TraceIdContext.currentTraceId();
         AgentTask savedTask = agentTaskRepository.saveAndFlush(
-                new AgentTask(userId, traceId, request.resumeId(), request.jobId(), enabledSteps)
+                new AgentTask(userId, traceId, resumeId, jobId, normalizeEnabledSteps(enabledSteps))
         );
         executionLogRepository.save(AgentExecutionLog.transition(savedTask, WorkflowStatus.PENDING));
         CareerTaskResponse response = CareerTaskResponse.from(savedTask);
         scheduleAfterCommit(savedTask.getId(), traceId);
         return response;
+    }
+
+    @Transactional
+    public CareerTaskResponse retry(Long userId, Long taskId) {
+        AgentTask failed = agentTaskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new BusinessException("CAREER_TASK_NOT_FOUND", "Career task not found", HttpStatus.NOT_FOUND));
+        if (failed.getStatus() != WorkflowStatus.FAILED) {
+            throw new BusinessException("CAREER_TASK_NOT_FAILED", "Only failed tasks can be retried", HttpStatus.CONFLICT);
+        }
+        return createForSteps(userId, failed.getResumeId(), failed.getJobId(), failed.getEnabledSteps());
     }
 
     @Transactional(readOnly = true)
