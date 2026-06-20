@@ -15,6 +15,15 @@ export type ReportSummary = {
   resumeTitle: string; company?: string; position: string; createdAt: string
 }
 export type ReportDetail = ReportSummary & { report: Record<string, unknown>; exportStatus: string }
+export type InterviewMessage = {
+  messageId: number; questionId?: number; role: 'INTERVIEWER' | 'CANDIDATE';
+  content: string; sequenceNo: number; createdAt: string
+}
+export type InterviewSessionSummary = {
+  sessionId: number; resumeId: number; jobId: number; status: 'IN_PROGRESS' | 'FINISHED';
+  currentQuestion: number; totalQuestions: number; createdAt: string; updatedAt: string; finishedAt?: string
+}
+export type InterviewSession = InterviewSessionSummary & { messages: InterviewMessage[] }
 
 type Envelope<T> = { success: boolean; data: T; error?: { code: string; message: string }; traceId?: string }
 
@@ -53,6 +62,15 @@ export const api = {
   retryTask: (id: number) => request<CareerTask>(`/api/career-tasks/${id}/retry`, { method: 'POST' }),
   reports: () => request<ReportSummary[]>('/api/reports'),
   report: (id: number) => request<ReportDetail>(`/api/reports/${id}`),
+  interviewSessions: () => request<InterviewSessionSummary[]>('/api/interview/sessions'),
+  interviewSession: (id: number) => request<InterviewSession>(`/api/interview/sessions/${id}`),
+  createInterviewSession: (resumeId: number, jobId: number) => request<InterviewSession>('/api/interview/sessions', {
+    method: 'POST', body: JSON.stringify({ resumeId, jobId })
+  }),
+  answerInterview: (id: number, answer: string) => request<InterviewSession>(`/api/interview/sessions/${id}/answers`, {
+    method: 'POST', body: JSON.stringify({ answer })
+  }),
+  finishInterview: (id: number) => request<InterviewSession>(`/api/interview/sessions/${id}/finish`, { method: 'POST' }),
   createTask: (resumeId: number, jobId: number) => request<CareerTask>('/api/career-tasks', {
     method: 'POST', body: JSON.stringify({ resumeId, jobId })
   }),
@@ -70,4 +88,3 @@ export const api = {
     method: 'POST', body: JSON.stringify({ documentId, company, position })
   }),
 }
-

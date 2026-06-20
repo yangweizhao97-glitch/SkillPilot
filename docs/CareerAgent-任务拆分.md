@@ -862,6 +862,26 @@ docker compose up -d postgres redis minio
 
 **Estimated scope:** S
 
+## Phase 10：文字对话式模拟面试
+
+### Task 10.1：实现交互式面试会话
+
+**Description:** 基于已生成的个性化面试题，提供可持续追问、保存记录和主动结束的文字面试会话。
+
+**Acceptance criteria:**
+- [x] 用户可基于简历和岗位创建模拟面试会话。
+- [x] 会话按题目顺序推进，并保存面试官与候选人的完整消息。
+- [x] 模型可针对回答最多追问一次，模型异常时安全进入下一题。
+- [x] 用户可主动结束面试，最后一题完成后也可自动结束。
+- [x] 所有会话按 `userId` 隔离。
+- [x] 前端提供桌面和移动端可用的文字对话界面。
+
+**Verification:**
+- [x] 会话状态、追问 Schema 和持久化集成测试通过。
+- [x] 后端测试、前端 lint/test/build 通过。
+
+**Dependencies:** Phase 6, Phase 8
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

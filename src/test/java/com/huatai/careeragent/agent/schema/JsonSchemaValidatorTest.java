@@ -30,6 +30,16 @@ class JsonSchemaValidatorTest {
     }
 
     @Test
+    void validatesInteractiveInterviewTurnDecision() {
+        assertThat(validator.validate("interview_turn.schema.json",
+                "{\"followUp\":true,\"message\":\"请具体说明事务边界。\"}").valid()).isTrue();
+        assertThat(validator.validate("interview_turn.schema.json",
+                "{\"followUp\":\"yes\",\"message\":\"追问\"}").valid()).isFalse();
+        assertThat(validator.validate("interview_turn.schema.json",
+                "{\"followUp\":false}").valid()).isFalse();
+    }
+
+    @Test
     void repairsInvalidOutputWithLlmAndRejectsFailedRepair() {
         LlmClient llmClient = mock(LlmClient.class);
         SchemaRepairService repairService = new SchemaRepairService(validator, llmClient);

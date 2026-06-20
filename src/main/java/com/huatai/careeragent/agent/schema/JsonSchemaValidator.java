@@ -22,7 +22,8 @@ public class JsonSchemaValidator {
     private static final Set<String> ALLOWED_SCHEMAS = Set.of(
             "job_match_result.schema.json",
             "resume_analysis_result.schema.json",
-            "interview_questions.schema.json"
+            "interview_questions.schema.json",
+            "interview_turn.schema.json"
     );
 
     private final ObjectMapper objectMapper;

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
   Activity, ArrowLeft, BarChart3, BriefcaseBusiness, Check, ChevronRight, CircleAlert, Clock3,
-  FileText, LayoutDashboard, ListChecks, LogOut, Menu, RefreshCw, Sparkles, Upload, X
+  FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
+  Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskLog, type User } from './api'
+import { api, session, type CareerTask, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskLog, type User } from './api'
 import './App.css'
 
-type View = 'overview' | 'prepare' | 'tasks' | 'reports'
+type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
 type InterviewItem = { questionId: number; question: string; questionType: string; difficulty: string; expectedPoints?: string[]; citations?: string[]; noCitationReason?: string }
 type AggregatedReport = {
   status: string; citations?: string[]; resume?: { title: string }; job?: { company?: string; position: string };
@@ -18,7 +19,7 @@ type AggregatedReport = {
 const statusLabel: Record<string, string> = {
   PENDING: '等待中', PARSING_FILE: '读取资料', EMBEDDING: '构建索引', MATCHING_JOB: '岗位匹配',
   ANALYZING_RESUME: '简历分析', GENERATING_QUESTIONS: '生成面试题', SUCCESS: '已完成', FAILED: '失败',
-  COMPLETE: '完整', PARTIAL: '部分结果', RUNNING: '执行中'
+  COMPLETE: '完整', PARTIAL: '部分结果', RUNNING: '执行中', IN_PROGRESS: '进行中', FINISHED: '已结束'
 }
 
 function App() {
@@ -98,7 +99,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   }, [tasks, load])
 
   const navigate = (next: View) => { setView(next); setSelectedTask(null); setSelectedReport(null); setMenuOpen(false) }
-  const title = selectedTask ? '任务详情' : selectedReport ? '报告详情' : ({ overview: '工作台', prepare: '新建分析', tasks: '任务', reports: '报告' } as const)[view]
+  const title = selectedTask ? '任务详情' : selectedReport ? '报告详情' : ({ overview: '工作台', prepare: '新建分析', tasks: '任务', reports: '报告', interviews: '模拟面试' } as const)[view]
 
   return <div className="workspace">
     <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
@@ -108,6 +109,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         <NavButton active={view === 'prepare'} icon={<Upload />} label="新建分析" onClick={() => navigate('prepare')} />
         <NavButton active={view === 'tasks'} icon={<ListChecks />} label="任务" badge={tasks.filter(t => !['SUCCESS', 'FAILED'].includes(t.status)).length} onClick={() => navigate('tasks')} />
         <NavButton active={view === 'reports'} icon={<BarChart3 />} label="报告" onClick={() => navigate('reports')} />
+        <NavButton active={view === 'interviews'} icon={<MessageSquare />} label="模拟面试" onClick={() => navigate('interviews')} />
       </nav>
       <div className="account"><div className="avatar">{(user.nickname || user.email).slice(0, 1).toUpperCase()}</div><div><strong>{user.nickname || '用户'}</strong><span>{user.email}</span></div><button className="icon" onClick={onLogout} title="退出登录"><LogOut /></button></div>
     </aside>
@@ -120,10 +122,107 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
          view === 'overview' ? <Overview tasks={tasks} reports={reports} resumes={resumes} jobs={jobs} onNew={() => navigate('prepare')} onTask={id => { setView('tasks'); setSelectedTask(id) }} onReport={id => { setView('reports'); setSelectedReport(id) }} /> :
          view === 'prepare' ? <Prepare resumes={resumes} jobs={jobs} onCreated={async id => { await load(); setView('tasks'); setSelectedTask(id) }} onResourcesChanged={load} /> :
          view === 'tasks' ? <TaskList tasks={tasks} onSelect={setSelectedTask} /> :
-         <ReportList reports={reports} onSelect={setSelectedReport} />}
+         view === 'reports' ? <ReportList reports={reports} onSelect={setSelectedReport} /> :
+         <InterviewWorkspace resumes={resumes} jobs={jobs} />}
       </div>
     </main>
     {menuOpen && <button className="backdrop" onClick={() => setMenuOpen(false)} aria-label="关闭菜单" />}
+  </div>
+}
+
+function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] }) {
+  const [sessions, setSessions] = useState<InterviewSessionSummary[]>([])
+  const [active, setActive] = useState<InterviewSession | null>(null)
+  const [resumeId, setResumeId] = useState(resumes[0]?.resumeId || 0)
+  const [jobId, setJobId] = useState(jobs[0]?.jobId || 0)
+  const [answer, setAnswer] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const transcriptRef = useRef<HTMLDivElement>(null)
+
+  const loadSessions = useCallback(async () => {
+    try { setSessions(await api.interviewSessions()) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '会话加载失败') }
+  }, [])
+
+  useEffect(() => { const timer = window.setTimeout(() => void loadSessions(), 0); return () => window.clearTimeout(timer) }, [loadSessions])
+  useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [active?.messages])
+
+  async function openSession(id: number) {
+    setBusy(true); setError('')
+    try { setActive(await api.interviewSession(id)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '会话加载失败') }
+    finally { setBusy(false) }
+  }
+
+  async function createSession() {
+    if (!resumeId || !jobId) return
+    setBusy(true); setError('')
+    try { const next = await api.createInterviewSession(resumeId, jobId); setActive(next); await loadSessions() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '面试创建失败') }
+    finally { setBusy(false) }
+  }
+
+  async function submitAnswer(event: FormEvent) {
+    event.preventDefault()
+    if (!active || !answer.trim()) return
+    setBusy(true); setError('')
+    try { const next = await api.answerInterview(active.sessionId, answer.trim()); setAnswer(''); setActive(next); await loadSessions() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '回答发送失败') }
+    finally { setBusy(false) }
+  }
+
+  async function finish() {
+    if (!active) return
+    setBusy(true); setError('')
+    try { setActive(await api.finishInterview(active.sessionId)); await loadSessions() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '结束面试失败') }
+    finally { setBusy(false) }
+  }
+
+  const resumeName = (id: number) => resumes.find(item => item.resumeId === id)?.title || `简历 #${id}`
+  const jobName = (id: number) => jobs.find(item => item.jobId === id)?.position || `岗位 #${id}`
+
+  return <div className="interview-layout">
+    <aside className="interview-panel">
+      <div className="interview-create">
+        <SectionTitle title="新面试" />
+        <Field label="简历"><select value={resumeId} onChange={event => setResumeId(Number(event.target.value))}><option value={0}>选择简历</option>{resumes.map(item => <option key={item.resumeId} value={item.resumeId}>{item.title}</option>)}</select></Field>
+        <Field label="岗位"><select value={jobId} onChange={event => setJobId(Number(event.target.value))}><option value={0}>选择岗位</option>{jobs.map(item => <option key={item.jobId} value={item.jobId}>{item.company ? `${item.company} · ` : ''}{item.position}</option>)}</select></Field>
+        <button className="primary wide" onClick={() => void createSession()} disabled={!resumeId || !jobId || busy}><MessageSquare size={16} />开始面试</button>
+      </div>
+      <div className="session-list">
+        <SectionTitle title="历史会话" />
+        {sessions.map(item => <button key={item.sessionId} className={active?.sessionId === item.sessionId ? 'session-row active' : 'session-row'} onClick={() => void openSession(item.sessionId)}>
+          <div><strong>{jobName(item.jobId)}</strong><span>{resumeName(item.resumeId)}</span></div>
+          <Status status={item.status} />
+          <small>{item.currentQuestion}/{item.totalQuestions} · {formatDate(item.updatedAt)}</small>
+        </button>)}
+        {!sessions.length && <Empty icon={<MessageSquare />} text="暂无面试会话" />}
+      </div>
+    </aside>
+    <section className="interview-room">
+      {active ? <>
+        <header className="interview-room-head">
+          <div><Status status={active.status} /><h2>{jobName(active.jobId)}</h2><span>{resumeName(active.resumeId)}</span></div>
+          <div className="interview-progress"><strong>{active.currentQuestion}/{active.totalQuestions}</strong><span>当前题目</span></div>
+          {active.status === 'IN_PROGRESS' && <button className="secondary" onClick={() => void finish()} disabled={busy}><Square size={14} />结束</button>}
+        </header>
+        <div className="transcript" ref={transcriptRef}>
+          {active.messages.map(message => <div key={message.messageId} className={`message ${message.role.toLowerCase()}`}>
+            <div className="message-role">{message.role === 'INTERVIEWER' ? 'AI 面试官' : '我'}</div>
+            <p>{message.content}</p>
+            <time>{formatDate(message.createdAt)}</time>
+          </div>)}
+          {busy && <div className="thinking"><span /><span /><span /></div>}
+        </div>
+        <form className="answer-box" onSubmit={submitAnswer}>
+          <textarea value={answer} onChange={event => setAnswer(event.target.value)} placeholder={active.status === 'FINISHED' ? '本轮面试已结束' : '输入你的回答'} disabled={active.status === 'FINISHED' || busy} maxLength={10000} />
+          <button className="primary" disabled={active.status === 'FINISHED' || !answer.trim() || busy} title="发送回答"><Send size={17} /></button>
+        </form>
+      </> : <Empty icon={<MessageSquare />} text="选择或创建一场模拟面试" />}
+      {error && <div className="alert interview-error"><CircleAlert size={16} />{error}</div>}
+    </section>
   </div>
 }
 
