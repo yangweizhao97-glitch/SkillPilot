@@ -6,6 +6,8 @@ import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.resume.ResumeRepository;
 import com.huatai.careeragent.task.CareerTaskDtos.CareerTaskResponse;
 import com.huatai.careeragent.task.CareerTaskDtos.CreateCareerTaskRequest;
+import com.huatai.careeragent.task.log.AgentExecutionLog;
+import com.huatai.careeragent.task.log.AgentExecutionLogRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,17 +28,20 @@ public class CareerTaskService {
     private final ResumeRepository resumeRepository;
     private final JobRepository jobRepository;
     private final CareerTaskAsyncExecutor asyncExecutor;
+    private final AgentExecutionLogRepository executionLogRepository;
 
     public CareerTaskService(
             AgentTaskRepository agentTaskRepository,
             ResumeRepository resumeRepository,
             JobRepository jobRepository,
-            CareerTaskAsyncExecutor asyncExecutor
+            CareerTaskAsyncExecutor asyncExecutor,
+            AgentExecutionLogRepository executionLogRepository
     ) {
         this.agentTaskRepository = agentTaskRepository;
         this.resumeRepository = resumeRepository;
         this.jobRepository = jobRepository;
         this.asyncExecutor = asyncExecutor;
+        this.executionLogRepository = executionLogRepository;
     }
 
     @Transactional
@@ -53,6 +58,7 @@ public class CareerTaskService {
         AgentTask savedTask = agentTaskRepository.saveAndFlush(
                 new AgentTask(userId, traceId, request.resumeId(), request.jobId(), enabledSteps)
         );
+        executionLogRepository.save(AgentExecutionLog.transition(savedTask, WorkflowStatus.PENDING));
         CareerTaskResponse response = CareerTaskResponse.from(savedTask);
         scheduleAfterCommit(savedTask.getId(), traceId);
         return response;

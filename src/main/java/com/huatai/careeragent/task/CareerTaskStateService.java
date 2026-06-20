@@ -1,5 +1,7 @@
 package com.huatai.careeragent.task;
 
+import com.huatai.careeragent.task.log.AgentExecutionLog;
+import com.huatai.careeragent.task.log.AgentExecutionLogRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -7,9 +9,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CareerTaskStateService {
     private final AgentTaskRepository agentTaskRepository;
+    private final AgentExecutionLogRepository executionLogRepository;
 
-    public CareerTaskStateService(AgentTaskRepository agentTaskRepository) {
+    public CareerTaskStateService(
+            AgentTaskRepository agentTaskRepository,
+            AgentExecutionLogRepository executionLogRepository
+    ) {
         this.agentTaskRepository = agentTaskRepository;
+        this.executionLogRepository = executionLogRepository;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -17,6 +24,7 @@ public class CareerTaskStateService {
         AgentTask task = agentTaskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
         task.transitionTo(next);
+        executionLogRepository.save(AgentExecutionLog.transition(task, next));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -24,5 +32,6 @@ public class CareerTaskStateService {
         AgentTask task = agentTaskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
         task.fail(errorMessage);
+        executionLogRepository.save(AgentExecutionLog.failure(task, errorMessage));
     }
 }

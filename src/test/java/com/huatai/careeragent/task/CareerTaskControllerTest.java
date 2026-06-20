@@ -9,6 +9,7 @@ import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.resume.Resume;
 import com.huatai.careeragent.resume.ResumeRepository;
+import com.huatai.careeragent.task.log.AgentExecutionLogRepository;
 import com.huatai.careeragent.user.User;
 import com.huatai.careeragent.user.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -45,6 +46,9 @@ class CareerTaskControllerTest {
     private AgentTaskRepository agentTaskRepository;
 
     @Autowired
+    private AgentExecutionLogRepository executionLogRepository;
+
+    @Autowired
     private ResumeRepository resumeRepository;
 
     @Autowired
@@ -62,6 +66,7 @@ class CareerTaskControllerTest {
     @AfterEach
     void cleanUp() {
         awaitNoRunningTasks();
+        executionLogRepository.deleteAll();
         agentTaskRepository.deleteAll();
         jobRepository.deleteAll();
         resumeRepository.deleteAll();
@@ -102,9 +107,28 @@ class CareerTaskControllerTest {
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
-                .andExpect(jsonPath("$.data.progress").value(100));
+                .andExpect(jsonPath("$.data.progress").value(100))
+                .andExpect(jsonPath("$.data.updatedAt").isNotEmpty());
+
+        mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskId").value(taskId))
+                .andExpect(jsonPath("$.data.traceId").value(completed.getTraceId()))
+                .andExpect(jsonPath("$.data.items.length()").value(7))
+                .andExpect(jsonPath("$.data.items[0].workflowStatus").value("PENDING"))
+                .andExpect(jsonPath("$.data.items[0].progress").value(0))
+                .andExpect(jsonPath("$.data.items[6].workflowStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[6].progress").value(100))
+                .andExpect(jsonPath("$.data.items[6].traceId").value(completed.getTraceId()))
+                .andExpect(jsonPath("$.data.items[6].updatedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/career-tasks/{taskId}", taskId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("CAREER_TASK_NOT_FOUND"));
+
+        mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("CAREER_TASK_NOT_FOUND"));
@@ -134,6 +158,14 @@ class CareerTaskControllerTest {
         AgentTask failed = awaitStatus(taskId, WorkflowStatus.FAILED);
         assertThat(failed.getErrorMessage()).contains("matching provider unavailable");
         assertThat(failed.getFinishedAt()).isNotNull();
+
+        mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(5))
+                .andExpect(jsonPath("$.data.items[4].workflowStatus").value("FAILED"))
+                .andExpect(jsonPath("$.data.items[4].status").value("FAILED"))
+                .andExpect(jsonPath("$.data.items[4].errorMessage").value("matching provider unavailable"));
     }
 
     @Test
