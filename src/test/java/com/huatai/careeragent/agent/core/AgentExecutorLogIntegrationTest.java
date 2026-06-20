@@ -65,12 +65,13 @@ class AgentExecutorLogIntegrationTest {
         List<AgentExecutionLog> logs = logRepository.findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(
                 task.getId(), user.getId()
         );
-        assertThat(logs).hasSize(1);
-        AgentExecutionLog log = logs.getFirst();
+        assertThat(logs).hasSize(2);
+        assertThat(logs.getFirst().getStatus()).isEqualTo(ExecutionLogStatus.STEP_STARTED);
+        AgentExecutionLog log = logs.getLast();
         assertThat(log.getTraceId()).isEqualTo(traceId);
         assertThat(log.getAgentName()).isEqualTo("LOG_TEST_AGENT");
         assertThat(log.getStepName()).isEqualTo("LOG_TEST_STEP");
-        assertThat(log.getStatus()).isEqualTo(ExecutionLogStatus.SUCCESS);
+        assertThat(log.getStatus()).isEqualTo(ExecutionLogStatus.STEP_COMPLETED);
         assertThat(log.getPromptTokens()).isEqualTo(12);
         assertThat(log.getCompletionTokens()).isEqualTo(8);
         assertThat(log.getTotalTokens()).isEqualTo(20);

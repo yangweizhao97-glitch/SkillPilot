@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 - 2026-06-20
+
+- Removed legacy fake workflow and log states and aligned tests with truthful step/tool lifecycle events.
+- Serialized report version allocation and interview answer updates to prevent concurrent-task data mixing.
+- Added an end-to-end concurrent task isolation regression test for task-scoped report aggregation.
+- Hardened interview SSE execution, disconnect handling, terminal events, and authenticated async dispatch.
+- Added an authenticated SSE lifecycle integration test and refreshed release documentation.
+
 ## 0.1.0 - 2026-06-20
 
 - Split document processing from the career analysis workflow and introduced document `READY` state.

@@ -33,6 +33,8 @@ public class ReportService {
 
     @Transactional
     public JobMatchReportResponse saveJobMatch(Long userId, Long taskId, Long resumeId, Long jobId, JsonNode result) {
+        jobRepository.findLockedByIdAndUserId(jobId, userId)
+                .orElseThrow(() -> new BusinessException("JOB_NOT_FOUND", "Job not found", HttpStatus.NOT_FOUND));
         int version = jobMatchRepository.maxVersion(resumeId, jobId) + 1;
         return JobMatchReportResponse.from(jobMatchRepository.save(
                 new JobMatchReport(userId, taskId, resumeId, jobId, version, toMap(result))
@@ -41,6 +43,8 @@ public class ReportService {
 
     @Transactional
     public ResumeAnalysisReportResponse saveResumeAnalysis(Long userId, Long taskId, Long resumeId, JsonNode result) {
+        resumeRepository.findLockedByIdAndUserId(resumeId, userId)
+                .orElseThrow(() -> new BusinessException("RESUME_NOT_FOUND", "Resume not found", HttpStatus.NOT_FOUND));
         int version = resumeAnalysisRepository.maxVersion(resumeId) + 1;
         return ResumeAnalysisReportResponse.from(resumeAnalysisRepository.save(
                 new ResumeAnalysisReport(userId, taskId, resumeId, version, toMap(result))

@@ -76,6 +76,7 @@ The complete template is [.env.example](.env.example). Important variables:
 - Resources: `/api/resumes`, `/api/jobs`
 - Workflow: `/api/career-tasks`, `/api/career-tasks/{id}/logs`
 - Reports: `/api/reports`, `/api/reports/{id}`
+- Interactive interview: `/api/interview/sessions`, `/api/interview/sessions/{id}/answers/stream`
 
 ## Operations
 
@@ -83,4 +84,3 @@ The complete template is [.env.example](.env.example). Important variables:
 - Security review: [docs/security-review.md](docs/security-review.md)
 - Troubleshooting runbook: [docs/runbook.md](docs/runbook.md)
 - Release checklist: [docs/release-checklist.md](docs/release-checklist.md)
-

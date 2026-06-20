@@ -18,13 +18,12 @@ class AgentTaskStateMachineTest {
                 List.of(WorkflowStatus.MATCHING_JOB, WorkflowStatus.ANALYZING_RESUME)
         );
 
-        task.transitionTo(WorkflowStatus.PARSING_FILE);
+        task.transitionTo(WorkflowStatus.MATCHING_JOB);
         assertThat(task.getStartedAt()).isNotNull();
         assertThat(task.getProgress()).isEqualTo(10);
-        task.transitionTo(WorkflowStatus.EMBEDDING);
-        task.transitionTo(WorkflowStatus.MATCHING_JOB);
         task.transitionTo(WorkflowStatus.ANALYZING_RESUME);
         task.transitionTo(WorkflowStatus.GENERATING_QUESTIONS);
+        task.transitionTo(WorkflowStatus.GENERATING_FINAL_REPORT);
         task.transitionTo(WorkflowStatus.SUCCESS);
 
         assertThat(task.getStatus()).isEqualTo(WorkflowStatus.SUCCESS);
@@ -36,15 +35,15 @@ class AgentTaskStateMachineTest {
     void rejectsInvalidTransition() {
         AgentTask task = new AgentTask(1L, "trace_test", 10L, 20L, List.of());
 
-        assertThatThrownBy(() -> task.transitionTo(WorkflowStatus.EMBEDDING))
+        assertThatThrownBy(() -> task.transitionTo(WorkflowStatus.ANALYZING_RESUME))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("PENDING -> EMBEDDING");
+                .hasMessageContaining("PENDING -> ANALYZING_RESUME");
     }
 
     @Test
     void canFailFromIntermediateStateAndKeepsErrorSummary() {
         AgentTask task = new AgentTask(1L, "trace_test", 10L, 20L, List.of());
-        task.transitionTo(WorkflowStatus.PARSING_FILE);
+        task.transitionTo(WorkflowStatus.MATCHING_JOB);
 
         task.fail("Provider timeout");
 

@@ -38,7 +38,7 @@ class AgentExecutorTest {
         assertThat(result.output()).isEqualTo("result");
         verify(logService).record(
                 any(), any(), any(), any(), any(),
-                org.mockito.ArgumentMatchers.eq(com.huatai.careeragent.task.log.ExecutionLogStatus.SUCCESS),
+                org.mockito.ArgumentMatchers.eq(com.huatai.careeragent.task.log.ExecutionLogStatus.STEP_COMPLETED),
                 any(Long.class), org.mockito.ArgumentMatchers.eq(new TokenUsage(10, 5, 15)), any()
         );
     }
@@ -56,7 +56,7 @@ class AgentExecutorTest {
         assertThat(executor.execute(agent, "input", context).output()).isEqualTo("ok");
         assertThat(attempts).hasValue(3);
         verify(retrySleeper, times(2)).sleep(any(Duration.class));
-        verify(logService, times(3)).record(any(), any(), any(), any(), any(), any(), any(Long.class), any(), any());
+        verify(logService, times(6)).record(any(), any(), any(), any(), any(), any(), any(Long.class), any(), any());
     }
 
     @Test
@@ -70,7 +70,7 @@ class AgentExecutorTest {
                 .extracting(exception -> ((AgentException) exception).getCode())
                 .isEqualTo("DENIED");
         verify(retrySleeper, never()).sleep(any());
-        verify(logService, times(1)).record(any(), any(), any(), any(), any(), any(), any(Long.class), any(), any());
+        verify(logService, times(2)).record(any(), any(), any(), any(), any(), any(), any(Long.class), any(), any());
     }
 
     private Agent<String, String> agent(AgentAction action) {

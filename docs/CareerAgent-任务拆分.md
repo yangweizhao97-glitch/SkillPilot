@@ -882,6 +882,36 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 6, Phase 8
 
+## Phase 10.5：v0.1.1 主流程稳定化与测试对齐
+
+**Description:** 在增加回答评分前，先固定职业分析与模拟面试的真实性、并发隔离和回归测试基线。
+
+**Acceptance criteria:**
+- [x] 删除职业任务中不执行真实工作的解析、向量化状态及旧日志状态。
+- [x] Agent 步骤和工具调用测试对齐真实 started/completed/failed 事件。
+- [x] 报告版本分配在并发任务下串行化，最终报告只聚合同一 `taskId` 的产物。
+- [x] 增加同一用户快速发起两个任务的跨任务污染回归测试。
+- [x] 模拟面试答案写入串行化，SSE 使用独立线程池并正确处理断连和终态。
+- [x] 增加带认证的模拟面试 SSE 生命周期集成测试。
+- [x] 完整后端 verify 与前端 check 通过。
+
+**Release target:** `v0.1.1`
+
+## Phase 11：回答评分与改进建议
+
+**Description:** 在 v0.1.1 稳定基线完成后，为每次回答增加结构化评分、证据说明和可执行的改进建议。
+
+**Planned acceptance criteria:**
+- [ ] 定义评分维度、权重、Schema 和异常降级策略。
+- [ ] 评分结果绑定 `sessionId`、`questionId` 和对应回答，禁止跨会话聚合。
+- [ ] SSE 推送评分中、评分完成和建议完成事件，不流式暴露未校验 JSON。
+- [ ] 前端逐题展示评分依据、优点、缺口和改进示例。
+- [ ] 增加评分 Schema、持久化、用户隔离和端到端测试。
+
+**Release target:** `v0.1.2`
+
+**Dependencies:** Phase 10.5 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

@@ -12,6 +12,7 @@ import com.huatai.careeragent.interview.InterviewQuestionRepository;
 import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.llm.LlmClient;
+import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
 import com.huatai.careeragent.report.JobMatchReportRepository;
 import com.huatai.careeragent.report.FinalReportRepository;
@@ -38,6 +39,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -115,7 +118,7 @@ class CareerWorkflowIntegrationTest {
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(interviewQuestionRepository.findAll()).hasSize(2);
         assertThat(finalReportRepository.findAll()).hasSize(1);
-        assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(9);
+        assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(12);
         assertThat(executionLogRepository.findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(fullTaskId, completed.getUserId()))
                 .extracting(log -> log.getAgentName())
                 .contains("JOB_MATCH_AGENT", "RESUME_ANALYSIS_AGENT", "INTERVIEW_QUESTION_AGENT");
@@ -131,6 +134,14 @@ class CareerWorkflowIntegrationTest {
                 .andExpect(jsonPath("$.data.report.jobMatch.version").value(1))
                 .andExpect(jsonPath("$.data.report.resumeAnalysis.version").value(1))
                 .andExpect(jsonPath("$.data.report.interviewQuestions.count").value(2));
+        mockMvc.perform(post("/api/reports/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"taskId\":" + fullTaskId + "}")
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskId").value(fullTaskId))
+                .andExpect(jsonPath("$.data.version").value(2))
+                .andExpect(jsonPath("$.data.report.status").value("COMPLETE"));
         mockMvc.perform(get("/api/reports/{reportId}", reportId)
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
@@ -180,18 +191,54 @@ class CareerWorkflowIntegrationTest {
     }
 
     @Test
-    void refreshCreatesPartialVersionWhenSectionsAreMissing() throws Exception {
+    void refreshRejectsUnscopedLatestVersionAggregation() throws Exception {
         Resources owner = createResources();
         mockMvc.perform(post("/api/reports/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"resumeId\":" + owner.resumeId() + ",\"jobId\":" + owner.jobId() + "}")
                         .header("Authorization", "Bearer " + owner.token()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.version").value(1))
-                .andExpect(jsonPath("$.data.report.status").value("PARTIAL"))
-                .andExpect(jsonPath("$.data.report.jobMatch.status").value("MISSING"))
-                .andExpect(jsonPath("$.data.report.resumeAnalysis.status").value("MISSING"))
-                .andExpect(jsonPath("$.data.report.interviewQuestions.status").value("MISSING"));
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void concurrentTasksKeepEveryAggregatedSectionInsideItsOwnTask() throws Exception {
+        Resources owner = createResources();
+        when(llmClient.complete(any())).thenAnswer(invocation -> {
+            LlmRequest request = invocation.getArgument(0);
+            String system = request.messages().getFirst().content();
+            if (system.contains("career matching")) return response(jobMatchJson());
+            if (system.contains("resume reviewer")) return response(resumeAnalysisJson());
+            return response(interviewQuestionsJson());
+        });
+
+        Long firstTaskId = createTask(owner.token(), owner.resumeId(), owner.jobId(), null);
+        Long secondTaskId = createTask(owner.token(), owner.resumeId(), owner.jobId(), null);
+        AgentTask first = awaitStatus(firstTaskId, WorkflowStatus.SUCCESS);
+        awaitStatus(secondTaskId, WorkflowStatus.SUCCESS);
+
+        assertThat(jobMatchReportRepository.findAll()).extracting(report -> report.getVersion())
+                .containsExactlyInAnyOrder(1, 2);
+        assertThat(resumeAnalysisReportRepository.findAll()).extracting(report -> report.getVersion())
+                .containsExactlyInAnyOrder(1, 2);
+        assertThat(finalReportRepository.findAll()).hasSize(2);
+
+        for (var finalReport : finalReportRepository.findAll()) {
+            Long taskId = finalReport.getTaskId();
+            var match = jobMatchReportRepository.findByUserIdAndTaskId(first.getUserId(), taskId).orElseThrow();
+            var analysis = resumeAnalysisReportRepository.findByUserIdAndTaskId(first.getUserId(), taskId).orElseThrow();
+            Map<?, ?> matchSection = (Map<?, ?>) finalReport.getReportJson().get("jobMatch");
+            Map<?, ?> analysisSection = (Map<?, ?>) finalReport.getReportJson().get("resumeAnalysis");
+            Map<?, ?> questionSection = (Map<?, ?>) finalReport.getReportJson().get("interviewQuestions");
+            assertThat(((Number) matchSection.get("reportId")).longValue()).isEqualTo(match.getId());
+            assertThat(((Number) analysisSection.get("reportId")).longValue()).isEqualTo(analysis.getId());
+            Set<Long> expectedQuestions = interviewQuestionRepository
+                    .findByUserIdAndTaskIdOrderByCreatedAtAscIdAsc(first.getUserId(), taskId).stream()
+                    .map(question -> question.getId()).collect(java.util.stream.Collectors.toSet());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> items = (List<Map<String, Object>>) questionSection.get("items");
+            assertThat(items.stream().map(item -> ((Number) item.get("questionId")).longValue()).toList())
+                    .containsExactlyInAnyOrderElementsOf(expectedQuestions);
+        }
     }
 
     @Test
@@ -251,7 +298,7 @@ class CareerWorkflowIntegrationTest {
         mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(10));
+                .andExpect(jsonPath("$.data.items.length()").value(13));
         mockMvc.perform(get("/api/reports").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("COMPLETE"));

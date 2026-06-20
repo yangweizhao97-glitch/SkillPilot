@@ -10,10 +10,7 @@ public enum WorkflowStatus {
     GENERATING_QUESTIONS(70),
     GENERATING_FINAL_REPORT(90),
     SUCCESS(100),
-    FAILED(100),
-    /** Legacy document states; never used by career analysis execution. */
-    @Deprecated PARSING_FILE(0),
-    @Deprecated EMBEDDING(0);
+    FAILED(100);
 
     private static final Map<WorkflowStatus, WorkflowStatus> NEXT = new EnumMap<>(WorkflowStatus.class);
 

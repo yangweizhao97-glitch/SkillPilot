@@ -92,7 +92,8 @@ class ToolExecutorIntegrationTest {
         assertThat(((SearchUserKnowledgeBaseTool.Output) searchResponse.output()).items()).isEmpty();
 
         List<ToolCallLog> logs = toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(resources.task().getId());
-        assertThat(logs).hasSize(3).allMatch(log -> log.getStatus() == ToolCallStatus.SUCCESS);
+        assertThat(logs).hasSize(3).allMatch(log -> log.getStatus() == ToolCallStatus.TOOL_COMPLETED);
+        assertThat(logs).extracting(ToolCallLog::getToolCallId).doesNotHaveDuplicates().doesNotContainNull();
         assertThat(logs).extracting(ToolCallLog::getTraceId).containsOnly(resources.task().getTraceId());
     }
 
@@ -121,7 +122,7 @@ class ToolExecutorIntegrationTest {
         assertThat(taskDenied.error().code()).isEqualTo("TOOL_TASK_ACCESS_DENIED");
         assertThat(toolCallLogRepository.findAll())
                 .hasSize(2)
-                .allMatch(log -> log.getStatus() == ToolCallStatus.FAILED);
+                .allMatch(log -> log.getStatus() == ToolCallStatus.TOOL_FAILED);
     }
 
     @Test

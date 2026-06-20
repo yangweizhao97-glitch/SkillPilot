@@ -79,7 +79,7 @@ public class FinalReportService {
     private FinalReportResponse generate(Long userId, Long resumeId, Long jobId, Long taskId) {
         Resume resume = resumeRepository.findByIdAndUserId(resumeId, userId)
                 .orElseThrow(() -> new BusinessException("RESUME_NOT_FOUND", "Resume not found", HttpStatus.NOT_FOUND));
-        Job job = jobRepository.findByIdAndUserId(jobId, userId)
+        Job job = jobRepository.findLockedByIdAndUserId(jobId, userId)
                 .orElseThrow(() -> new BusinessException("JOB_NOT_FOUND", "Job not found", HttpStatus.NOT_FOUND));
 
         if (taskId == null) {

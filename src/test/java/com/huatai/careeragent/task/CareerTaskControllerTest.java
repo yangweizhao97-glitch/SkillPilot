@@ -162,10 +162,10 @@ class CareerTaskControllerTest {
         mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(5))
-                .andExpect(jsonPath("$.data.items[4].workflowStatus").value("FAILED"))
-                .andExpect(jsonPath("$.data.items[4].status").value("FAILED"))
-                .andExpect(jsonPath("$.data.items[4].errorMessage").value("matching provider unavailable"));
+                .andExpect(jsonPath("$.data.items.length()").value(3))
+                .andExpect(jsonPath("$.data.items[2].workflowStatus").value("MATCHING_JOB"))
+                .andExpect(jsonPath("$.data.items[2].status").value("STEP_FAILED"))
+                .andExpect(jsonPath("$.data.items[2].errorMessage").value("matching provider unavailable"));
     }
 
     @Test

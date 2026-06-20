@@ -1,6 +1,6 @@
 # CareerAgent API Design
 
-本文定义 CareerAgent V1 的 REST API 合同。V1 只覆盖登录、上传简历/JD、解析、切分与检索、Career 任务、岗位匹配、简历分析、面试题生成、报告和日志。SSE、模拟面试评分、PDF 导出放到 V2/V3。
+本文定义 CareerAgent 当前 REST API 合同。它覆盖登录、上传简历/JD、解析、切分与检索、Career 任务、岗位匹配、简历分析、面试题生成、报告、日志和文字模拟面试。职业分析结果继续使用结构化 JSON；文字面试回复通过 SSE 推送。回答评分和 PDF 导出留给后续版本。
 
 ## General Rules
 
@@ -413,7 +413,7 @@ Response:
 }
 ```
 
-V1 uses polling with this endpoint. V2 may add:
+当前职业分析进度使用该接口轮询。任务事件流仍是后续增强项：
 
 ```http
 GET /api/career-tasks/{taskId}/events
@@ -477,7 +477,18 @@ Request:
 GET /api/interview/questions?resumeId=1&jobId=2&questionType=PROJECT&difficulty=MEDIUM
 ```
 
-V2 will add interview sessions, answers, scoring, and finish endpoints.
+### Interactive Interview Session
+
+```http
+POST /api/interview/sessions
+GET /api/interview/sessions
+GET /api/interview/sessions/{sessionId}
+POST /api/interview/sessions/{sessionId}/answers
+POST /api/interview/sessions/{sessionId}/answers/stream
+POST /api/interview/sessions/{sessionId}/finish
+```
+
+`answers/stream` produces `text/event-stream` and emits interview lifecycle events incrementally. Answer scoring is not part of v0.1.1.
 
 ## Reports
 
@@ -492,6 +503,18 @@ GET /api/reports?page=1&pageSize=20
 ```http
 GET /api/reports/{reportId}
 ```
+
+### Refresh Final Report
+
+```http
+POST /api/reports/refresh
+```
+
+```json
+{"taskId": 100}
+```
+
+Refresh is strictly scoped by `taskId`; resume/job “latest version” aggregation is not supported.
 
 Response:
 
@@ -557,7 +580,7 @@ ParseStatus: PENDING, SUCCESS, FAILED
 DocType: RESUME, JD, NOTE, PROJECT_DOC
 RetrievalMode: VECTOR, KEYWORD, HYBRID
 TaskType: CAREER_PREPARE, RESUME_ANALYSIS, JOB_MATCH
-WorkflowStatus: PENDING, PARSING_FILE, EMBEDDING, MATCHING_JOB, ANALYZING_RESUME, GENERATING_QUESTIONS, SUCCESS, FAILED
+WorkflowStatus: PENDING, MATCHING_JOB, ANALYZING_RESUME, GENERATING_QUESTIONS, FINAL_REPORT, SUCCESS, FAILED
 QuestionType: PROJECT, TECH, BEHAVIOR, JD_MATCH
 Difficulty: EASY, MEDIUM, HARD
 LogStatus: SUCCESS, FAILED

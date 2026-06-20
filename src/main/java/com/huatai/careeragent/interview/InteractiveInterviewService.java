@@ -88,7 +88,7 @@ public class InteractiveInterviewService {
 
     @Transactional
     public InterviewSessionResponse answer(Long userId, Long sessionId, String answer) {
-        InterviewSession session = requireSession(userId, sessionId);
+        InterviewSession session = requireSessionForUpdate(userId, sessionId);
         requireInProgress(session);
         InterviewQuestion current = requireQuestion(userId, session.currentQuestionId());
         addMessage(session, current.getId(), InterviewMessageRole.CANDIDATE, answer.trim());
@@ -107,7 +107,7 @@ public class InteractiveInterviewService {
 
     @Transactional
     public InterviewSessionResponse finish(Long userId, Long sessionId) {
-        InterviewSession session = requireSession(userId, sessionId);
+        InterviewSession session = requireSessionForUpdate(userId, sessionId);
         if (session.getStatus() == InterviewSessionStatus.IN_PROGRESS) {
             session.finish();
             addMessage(session, session.currentQuestionId(), InterviewMessageRole.INTERVIEWER, CLOSING_MESSAGE);
@@ -164,6 +164,12 @@ public class InteractiveInterviewService {
 
     private InterviewSession requireSession(Long userId, Long sessionId) {
         return sessionRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new BusinessException("INTERVIEW_SESSION_NOT_FOUND",
+                        "模拟面试会话不存在", HttpStatus.NOT_FOUND));
+    }
+
+    private InterviewSession requireSessionForUpdate(Long userId, Long sessionId) {
+        return sessionRepository.findLockedByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new BusinessException("INTERVIEW_SESSION_NOT_FOUND",
                         "模拟面试会话不存在", HttpStatus.NOT_FOUND));
     }
