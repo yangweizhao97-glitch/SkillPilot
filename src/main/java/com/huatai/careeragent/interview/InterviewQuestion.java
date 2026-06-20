@@ -22,6 +22,7 @@ public class InterviewQuestion {
     @Column(name = "user_id", nullable = false) private Long userId;
     @Column(name = "resume_id", nullable = false) private Long resumeId;
     @Column(name = "job_id", nullable = false) private Long jobId;
+    @Column(name = "task_id") private Long taskId;
     @Column(name = "question_text", nullable = false) private String questionText;
     @Enumerated(EnumType.STRING) @Column(name = "question_type", nullable = false, length = 32)
     private QuestionType questionType;
@@ -35,12 +36,14 @@ public class InterviewQuestion {
 
     protected InterviewQuestion() { }
 
-    public InterviewQuestion(Long userId, Long resumeId, Long jobId, String questionText, QuestionType questionType,
+    public InterviewQuestion(Long userId, Long resumeId, Long jobId, Long taskId, String questionText,
+                             QuestionType questionType,
                              QuestionDifficulty difficulty, List<String> expectedPoints, List<String> citations,
                              String noCitationReason) {
         this.userId = userId;
         this.resumeId = resumeId;
         this.jobId = jobId;
+        this.taskId = taskId;
         this.questionText = questionText;
         this.questionType = questionType;
         this.difficulty = difficulty;
@@ -53,6 +56,7 @@ public class InterviewQuestion {
     public Long getUserId() { return userId; }
     public Long getResumeId() { return resumeId; }
     public Long getJobId() { return jobId; }
+    public Long getTaskId() { return taskId; }
     public String getQuestionText() { return questionText; }
     public QuestionType getQuestionType() { return questionType; }
     public QuestionDifficulty getDifficulty() { return difficulty; }

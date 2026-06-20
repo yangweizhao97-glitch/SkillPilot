@@ -55,7 +55,7 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
         );
         outputSupport.validateCitations(validated.value(), knowledge.items());
         List<InterviewQuestionResponse> saved = questionService.save(
-                context.userId(), input.resumeId(), input.jobId(), validated.value()
+                context.userId(), input.resumeId(), input.jobId(), context.taskId(), validated.value()
         );
         return AgentResult.success(saved, "interviewQuestionCount=" + saved.size(),
                 outputSupport.totalUsage(response.usage(), validated));

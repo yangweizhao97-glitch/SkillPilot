@@ -27,11 +27,11 @@ public class InterviewQuestionService {
     }
 
     @Transactional
-    public List<InterviewQuestionResponse> save(Long userId, Long resumeId, Long jobId, JsonNode result) {
+    public List<InterviewQuestionResponse> save(Long userId, Long resumeId, Long jobId, Long taskId, JsonNode result) {
         List<InterviewQuestion> questions = new ArrayList<>();
         for (JsonNode item : result.path("questions")) {
             questions.add(new InterviewQuestion(
-                    userId, resumeId, jobId, item.path("question").asText(),
+                    userId, resumeId, jobId, taskId, item.path("question").asText(),
                     QuestionType.valueOf(item.path("questionType").asText()),
                     QuestionDifficulty.valueOf(item.path("difficulty").asText()),
                     strings(item.path("expectedPoints")), strings(item.path("citations")),

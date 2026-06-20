@@ -12,6 +12,7 @@ import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmResponse;
 import com.huatai.careeragent.report.JobMatchReportRepository;
+import com.huatai.careeragent.report.FinalReportRepository;
 import com.huatai.careeragent.report.ResumeAnalysisReportRepository;
 import com.huatai.careeragent.resume.Resume;
 import com.huatai.careeragent.resume.ResumeRepository;
@@ -54,6 +55,7 @@ class CareerWorkflowIntegrationTest {
     @Autowired private JobMatchReportRepository jobMatchReportRepository;
     @Autowired private ResumeAnalysisReportRepository resumeAnalysisReportRepository;
     @Autowired private InterviewQuestionRepository interviewQuestionRepository;
+    @Autowired private FinalReportRepository finalReportRepository;
     @Autowired private JobRepository jobRepository;
     @Autowired private ResumeRepository resumeRepository;
     @Autowired private DocumentRepository documentRepository;
@@ -67,6 +69,7 @@ class CareerWorkflowIntegrationTest {
         awaitNoRunningTasks();
         toolCallLogRepository.deleteAll();
         executionLogRepository.deleteAll();
+        finalReportRepository.deleteAll();
         interviewQuestionRepository.deleteAll();
         jobMatchReportRepository.deleteAll();
         resumeAnalysisReportRepository.deleteAll();
@@ -96,10 +99,27 @@ class CareerWorkflowIntegrationTest {
         assertThat(jobMatchReportRepository.findAll()).hasSize(1);
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(interviewQuestionRepository.findAll()).hasSize(2);
+        assertThat(finalReportRepository.findAll()).hasSize(1);
         assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(9);
         assertThat(executionLogRepository.findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(fullTaskId, completed.getUserId()))
                 .extracting(log -> log.getAgentName())
                 .contains("JOB_MATCH_AGENT", "RESUME_ANALYSIS_AGENT", "INTERVIEW_QUESTION_AGENT");
+
+        String reportId = finalReportRepository.findAll().getFirst().getId().toString();
+        mockMvc.perform(get("/api/reports").header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].status").value("COMPLETE"))
+                .andExpect(jsonPath("$.data[0].version").value(1));
+        mockMvc.perform(get("/api/reports/{reportId}", reportId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.report.jobMatch.version").value(1))
+                .andExpect(jsonPath("$.data.report.resumeAnalysis.version").value(1))
+                .andExpect(jsonPath("$.data.report.interviewQuestions.count").value(2));
+        mockMvc.perform(get("/api/reports/{reportId}", reportId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("REPORT_NOT_FOUND"));
 
         mockMvc.perform(get("/api/jobs/{jobId}/match-reports", owner.jobId())
                         .header("Authorization", "Bearer " + owner.token()))
@@ -142,6 +162,36 @@ class CareerWorkflowIntegrationTest {
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("JOB_NOT_FOUND"));
+    }
+
+    @Test
+    void refreshCreatesPartialVersionWhenSectionsAreMissing() throws Exception {
+        Resources owner = createResources();
+        mockMvc.perform(post("/api/reports/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resumeId\":" + owner.resumeId() + ",\"jobId\":" + owner.jobId() + "}")
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(1))
+                .andExpect(jsonPath("$.data.report.status").value("PARTIAL"))
+                .andExpect(jsonPath("$.data.report.jobMatch.status").value("MISSING"))
+                .andExpect(jsonPath("$.data.report.resumeAnalysis.status").value("MISSING"))
+                .andExpect(jsonPath("$.data.report.interviewQuestions.status").value("MISSING"));
+    }
+
+    @Test
+    void resumeOnlyAnalysisSucceedsWithoutCreatingFinalReport() throws Exception {
+        Resources owner = createResources();
+        when(llmClient.complete(any())).thenReturn(response(resumeAnalysisJson()));
+        String response = mockMvc.perform(post("/api/resumes/{resumeId}/analyze", owner.resumeId())
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        Long taskId = objectMapper.readTree(response).path("data").path("taskId").asLong();
+        awaitStatus(taskId, WorkflowStatus.SUCCESS);
+        assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
+        assertThat(finalReportRepository.findAll()).isEmpty();
     }
 
     private Long createTask(String token, Long resumeId, Long jobId, String enabledStep) throws Exception {

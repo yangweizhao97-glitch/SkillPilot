@@ -34,10 +34,11 @@ public class CareerTaskAsyncExecutor {
         TraceIdContext.set(traceId);
         try {
             for (WorkflowStatus status : EXECUTION_ORDER) {
-                stateService.transition(taskId, status);
-                if (status != WorkflowStatus.SUCCESS) {
+                if (status == WorkflowStatus.SUCCESS) {
                     stepHandler.execute(taskId, status);
                 }
+                stateService.transition(taskId, status);
+                if (status != WorkflowStatus.SUCCESS) stepHandler.execute(taskId, status);
             }
             log.info("Career task completed: taskId={}", taskId);
             return CompletableFuture.completedFuture(null);

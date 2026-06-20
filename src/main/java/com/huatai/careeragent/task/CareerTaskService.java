@@ -1,6 +1,7 @@
 package com.huatai.careeragent.task;
 
 import com.huatai.careeragent.common.error.BusinessException;
+import com.huatai.careeragent.common.api.PageResponse;
 import com.huatai.careeragent.common.trace.TraceIdContext;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.resume.ResumeRepository;
@@ -9,6 +10,9 @@ import com.huatai.careeragent.task.CareerTaskDtos.CreateCareerTaskRequest;
 import com.huatai.careeragent.task.log.AgentExecutionLog;
 import com.huatai.careeragent.task.log.AgentExecutionLogRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -86,6 +90,17 @@ public class CareerTaskService {
         AgentTask task = agentTaskRepository.findByIdAndUserId(taskId, userId)
                 .orElseThrow(() -> new BusinessException("CAREER_TASK_NOT_FOUND", "Career task not found", HttpStatus.NOT_FOUND));
         return CareerTaskResponse.from(task);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CareerTaskResponse> list(Long userId, int page, int pageSize) {
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 1), 100);
+        Page<AgentTask> result = agentTaskRepository.findByUserId(
+                userId, PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+        return new PageResponse<>(result.map(CareerTaskResponse::from).getContent(), safePage, safePageSize,
+                result.getTotalElements(), result.getTotalPages());
     }
 
     private List<WorkflowStatus> normalizeEnabledSteps(List<WorkflowStatus> requested) {

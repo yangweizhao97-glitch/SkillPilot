@@ -2,6 +2,7 @@ package com.huatai.careeragent.task;
 
 import com.huatai.careeragent.common.api.ApiResponse;
 import com.huatai.careeragent.common.security.CurrentUser;
+import com.huatai.careeragent.common.api.PageResponse;
 import com.huatai.careeragent.task.CareerTaskDtos.CareerTaskResponse;
 import com.huatai.careeragent.task.CareerTaskDtos.CreateCareerTaskRequest;
 import com.huatai.careeragent.task.log.TaskLogDtos.TaskLogResponse;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,6 +33,15 @@ public class CareerTaskController {
             @Valid @RequestBody CreateCareerTaskRequest request
     ) {
         return ApiResponse.ok(careerTaskService.create(currentUser.userId(), request));
+    }
+
+    @GetMapping
+    public ApiResponse<PageResponse<CareerTaskResponse>> list(
+            CurrentUser currentUser,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize
+    ) {
+        return ApiResponse.ok(careerTaskService.list(currentUser.userId(), page, pageSize));
     }
 
     @GetMapping("/{taskId}")
