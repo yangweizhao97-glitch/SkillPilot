@@ -37,18 +37,22 @@ public class AgentExecutor {
         int attempt = 0;
         while (true) {
             long start = System.nanoTime();
+            logService.record(
+                    context, agent.name(), agent.stepName(), inputSummary, "Agent started",
+                    ExecutionLogStatus.STEP_STARTED, 0, TokenUsage.empty(), null
+            );
             try {
                 AgentResult<O> result = agent.execute(input, context);
                 logService.record(
                         context, agent.name(), agent.stepName(), inputSummary, summarize(result.outputSummary()),
-                        ExecutionLogStatus.SUCCESS, elapsedMs(start), result.usage(), null
+                        ExecutionLogStatus.STEP_COMPLETED, elapsedMs(start), result.usage(), null
                 );
                 return result;
             } catch (RuntimeException exception) {
                 Failure failure = classify(exception);
                 logService.record(
                         context, agent.name(), agent.stepName(), inputSummary, "attempt=" + (attempt + 1),
-                        ExecutionLogStatus.FAILED, elapsedMs(start), TokenUsage.empty(), summarize(failure.message())
+                        ExecutionLogStatus.STEP_FAILED, elapsedMs(start), TokenUsage.empty(), summarize(failure.message())
                 );
                 if (!failure.retryable() || attempt >= properties.getMaxRetries()) {
                     throw new AgentException(failure.code(), failure.message(), false, exception);

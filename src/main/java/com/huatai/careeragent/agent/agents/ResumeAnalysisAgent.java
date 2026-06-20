@@ -9,7 +9,6 @@ import com.huatai.careeragent.agent.tool.AgentNames;
 import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
-import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
 import com.huatai.careeragent.report.ReportService;
@@ -24,11 +23,11 @@ import java.util.Set;
 public class ResumeAnalysisAgent implements Agent<ResumeAnalysisAgent.Input, ResumeAnalysisReportResponse> {
     private final AgentToolGateway tools;
     private final AgentOutputSupport outputSupport;
-    private final LlmClient llmClient;
+    private final AgentLlmGateway llmClient;
     private final SchemaRepairService schemaRepairService;
     private final ReportService reportService;
 
-    public ResumeAnalysisAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, LlmClient llmClient,
+    public ResumeAnalysisAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, AgentLlmGateway llmClient,
                                SchemaRepairService schemaRepairService, ReportService reportService) {
         this.tools = tools;
         this.outputSupport = outputSupport;
@@ -55,13 +54,13 @@ public class ResumeAnalysisAgent implements Agent<ResumeAnalysisAgent.Input, Res
                 "Analyze the resume. Required keys: summary, highlights, weaknesses, projectIssues, suggestions, "
                         + "risks, nextActions, citations. " + outputSupport.citationInstruction(allowedCitations),
                 contexts, context.traceId(), true
-        ));
+        ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(
                 "resume_analysis_result.schema.json", response.content(), context.traceId()
         );
         outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         ResumeAnalysisReportResponse saved = reportService.saveResumeAnalysis(
-                context.userId(), input.resumeId(), validated.value()
+                context.userId(), context.taskId(), input.resumeId(), validated.value()
         );
         return AgentResult.success(saved, "resumeAnalysisReportId=" + saved.reportId(),
                 outputSupport.totalUsage(response.usage(), validated));

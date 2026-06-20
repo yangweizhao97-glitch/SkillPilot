@@ -83,11 +83,20 @@ public class AgentExecutionLog {
     }
 
     public static AgentExecutionLog transition(AgentTask task, WorkflowStatus workflowStatus) {
-        return new AgentExecutionLog(task, workflowStatus, ExecutionLogStatus.SUCCESS, null);
+        ExecutionLogStatus event = workflowStatus == WorkflowStatus.SUCCESS
+                ? ExecutionLogStatus.TASK_COMPLETED : ExecutionLogStatus.STEP_STARTED;
+        return new AgentExecutionLog(task, workflowStatus, event, null);
     }
 
-    public static AgentExecutionLog failure(AgentTask task, String errorMessage) {
-        return new AgentExecutionLog(task, WorkflowStatus.FAILED, ExecutionLogStatus.FAILED, errorMessage);
+    public static AgentExecutionLog failure(AgentTask task, WorkflowStatus failedStep, String errorMessage) {
+        return new AgentExecutionLog(task, failedStep, ExecutionLogStatus.STEP_FAILED, errorMessage);
+    }
+
+    public static AgentExecutionLog completed(AgentTask task, WorkflowStatus status, long durationMs) {
+        AgentExecutionLog log = new AgentExecutionLog(task, status, ExecutionLogStatus.STEP_COMPLETED, null);
+        log.durationMs = durationMs;
+        log.outputSummary = "Workflow step completed: " + status.name();
+        return log;
     }
 
     public static AgentExecutionLog agentExecution(

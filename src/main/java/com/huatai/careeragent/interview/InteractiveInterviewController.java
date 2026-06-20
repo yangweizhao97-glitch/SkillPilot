@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -21,9 +23,11 @@ import java.util.List;
 @RequestMapping("/api/interview/sessions")
 public class InteractiveInterviewController {
     private final InteractiveInterviewService service;
+    private final InterviewStreamService streamService;
 
-    public InteractiveInterviewController(InteractiveInterviewService service) {
+    public InteractiveInterviewController(InteractiveInterviewService service, InterviewStreamService streamService) {
         this.service = service;
+        this.streamService = streamService;
     }
 
     @PostMapping
@@ -46,6 +50,12 @@ public class InteractiveInterviewController {
     public ApiResponse<InterviewSessionResponse> answer(CurrentUser currentUser, @PathVariable Long sessionId,
                                                         @Valid @RequestBody SubmitAnswerRequest request) {
         return ApiResponse.ok(service.answer(currentUser.userId(), sessionId, request.answer()));
+    }
+
+    @PostMapping(value = "/{sessionId}/answers/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter answerStream(CurrentUser currentUser, @PathVariable Long sessionId,
+                                   @Valid @RequestBody SubmitAnswerRequest request) {
+        return streamService.answer(currentUser.userId(), sessionId, request.answer());
     }
 
     @PostMapping("/{sessionId}/finish")

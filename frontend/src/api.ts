@@ -10,6 +10,11 @@ export type TaskLog = {
   logId: number; agentName: string; stepName: string; workflowStatus: string; progress: number; status: string;
   outputSummary?: string; errorMessage?: string; durationMs?: number; totalTokens?: number; updatedAt: string
 }
+export type ToolCall = {
+  toolCallId: string; agentName: string; toolName: string; inputSummary?: Record<string, unknown>;
+  resultSummary?: Record<string, unknown>; status: 'TOOL_STARTED' | 'TOOL_COMPLETED' | 'TOOL_FAILED';
+  durationMs?: number; errorMessage?: string; updatedAt: string
+}
 export type ReportSummary = {
   reportId: number; taskId?: number; resumeId: number; jobId: number; version: number; status: string;
   resumeTitle: string; company?: string; position: string; createdAt: string
@@ -58,7 +63,7 @@ export const api = {
   jobs: () => request<PageData<Job>>('/api/jobs?pageSize=100'),
   tasks: () => request<PageData<CareerTask>>('/api/career-tasks?pageSize=50'),
   task: (id: number) => request<CareerTask>(`/api/career-tasks/${id}`),
-  logs: (id: number) => request<{ taskId: number; traceId: string; items: TaskLog[] }>(`/api/career-tasks/${id}/logs`),
+  logs: (id: number) => request<{ taskId: number; traceId: string; items: TaskLog[]; toolCalls: ToolCall[] }>(`/api/career-tasks/${id}/logs`),
   retryTask: (id: number) => request<CareerTask>(`/api/career-tasks/${id}/retry`, { method: 'POST' }),
   reports: () => request<ReportSummary[]>('/api/reports'),
   report: (id: number) => request<ReportDetail>(`/api/reports/${id}`),
@@ -70,14 +75,37 @@ export const api = {
   answerInterview: (id: number, answer: string) => request<InterviewSession>(`/api/interview/sessions/${id}/answers`, {
     method: 'POST', body: JSON.stringify({ answer })
   }),
+  streamInterviewAnswer: async (id: number, answer: string,
+    onEvent: (event: string, data: Record<string, unknown>) => void) => {
+    const response = await fetch(`/api/interview/sessions/${id}/answers/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.get() || ''}` },
+      body: JSON.stringify({ answer })
+    })
+    if (!response.ok || !response.body) throw new Error('面试流连接失败')
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n'); buffer = frames.pop() || ''
+      for (const frame of frames) {
+        let event = 'message'; let data = ''
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          if (line.startsWith('data:')) data += line.slice(5).trim()
+        }
+        if (data) onEvent(event, JSON.parse(data) as Record<string, unknown>)
+      }
+    }
+  },
   finishInterview: (id: number) => request<InterviewSession>(`/api/interview/sessions/${id}/finish`, { method: 'POST' }),
   createTask: (resumeId: number, jobId: number) => request<CareerTask>('/api/career-tasks', {
     method: 'POST', body: JSON.stringify({ resumeId, jobId })
   }),
-  upload: async (file: File, fileType: 'RESUME' | 'JD') => {
+  upload: async (file: File, fileType: 'RESUME' | 'JD' | 'NOTE' | 'PROJECT_DOC') => {
     const form = new FormData(); form.append('file', file); form.append('fileType', fileType)
     return request<{ fileId: number }>('/api/files/upload', { method: 'POST', body: form })
   },
+  processFile: (fileId: number) => request<{ documentId: number; status: 'READY' }>(`/api/files/${fileId}/process`, { method: 'POST' }),
   parse: (fileId: number) => request<{ documentId: number }>(`/api/files/${fileId}/parse`, { method: 'POST' }),
   chunk: (documentId: number) => request<unknown>(`/api/documents/${documentId}/chunks`, { method: 'POST' }),
   embed: (documentId: number) => request<unknown>(`/api/documents/${documentId}/embeddings`, { method: 'POST' }),

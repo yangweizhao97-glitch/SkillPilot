@@ -1,6 +1,10 @@
 package com.huatai.careeragent.task.log;
 
 public enum ExecutionLogStatus {
-    SUCCESS,
-    FAILED
+    STEP_STARTED,
+    STEP_COMPLETED,
+    STEP_FAILED,
+    TASK_COMPLETED,
+    @Deprecated SUCCESS,
+    @Deprecated FAILED
 }

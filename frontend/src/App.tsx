@@ -4,7 +4,7 @@ import {
   FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskLog, type User } from './api'
+import { api, session, type CareerTask, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskLog, type ToolCall, type User } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
@@ -17,9 +17,12 @@ type AggregatedReport = {
 }
 
 const statusLabel: Record<string, string> = {
-  PENDING: '等待中', PARSING_FILE: '读取资料', EMBEDDING: '构建索引', MATCHING_JOB: '岗位匹配',
-  ANALYZING_RESUME: '简历分析', GENERATING_QUESTIONS: '生成面试题', SUCCESS: '已完成', FAILED: '失败',
+  PENDING: '等待中', MATCHING_JOB: '岗位匹配',
+  ANALYZING_RESUME: '简历分析', GENERATING_QUESTIONS: '生成面试题', GENERATING_FINAL_REPORT: '汇总最终报告', SUCCESS: '已完成', FAILED: '失败',
   COMPLETE: '完整', PARTIAL: '部分结果', RUNNING: '执行中', IN_PROGRESS: '进行中', FINISHED: '已结束'
+  , INTERVIEW_ANSWER_RECEIVED: '已收到回答', INTERVIEW_EVALUATING: '正在分析回答',
+  INTERVIEW_FOLLOWUP_STREAMING: '正在生成追问或反馈', INTERVIEW_FEEDBACK_COMPLETED: '反馈完成',
+  INTERVIEW_NEXT_QUESTION: '进入下一题', INTERVIEW_COMPLETED: '面试完成'
 }
 
 function App() {
@@ -138,6 +141,8 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   const [answer, setAnswer] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [interviewState, setInterviewState] = useState('')
+  const [streamText, setStreamText] = useState('')
   const transcriptRef = useRef<HTMLDivElement>(null)
 
   const loadSessions = useCallback(async () => {
@@ -167,9 +172,18 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
     event.preventDefault()
     if (!active || !answer.trim()) return
     setBusy(true); setError('')
-    try { const next = await api.answerInterview(active.sessionId, answer.trim()); setAnswer(''); setActive(next); await loadSessions() }
+    try {
+      const submitted = answer.trim(); setAnswer(''); setStreamText(''); setInterviewState('INTERVIEW_ANSWER_RECEIVED')
+      await api.streamInterviewAnswer(active.sessionId, submitted, (event, data) => {
+        setInterviewState(event)
+        if (event === 'INTERVIEW_FOLLOWUP_STREAMING') setStreamText(value => value + String(data.delta || ''))
+        const next = data.session as InterviewSession | undefined
+        if (next) { setActive(next); setStreamText('') }
+      })
+      await loadSessions()
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : '回答发送失败') }
-    finally { setBusy(false) }
+    finally { setBusy(false); setInterviewState('') }
   }
 
   async function finish() {
@@ -214,7 +228,8 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
             <p>{message.content}</p>
             <time>{formatDate(message.createdAt)}</time>
           </div>)}
-          {busy && <div className="thinking"><span /><span /><span /></div>}
+          {streamText && <div className="message interviewer"><div className="message-role">AI 面试官</div><p>{streamText}</p></div>}
+          {busy && <div className="thinking"><span /><span /><span />{interviewState && <small>{statusLabel[interviewState] || interviewState}</small>}</div>}
         </div>
         <form className="answer-box" onSubmit={submitAnswer}>
           <textarea value={answer} onChange={event => setAnswer(event.target.value)} placeholder={active.status === 'FINISHED' ? '本轮面试已结束' : '输入你的回答'} disabled={active.status === 'FINISHED' || busy} maxLength={10000} />
@@ -265,18 +280,16 @@ function Prepare({ resumes, jobs, onCreated, onResourcesChanged }: { resumes: Re
     if (!resumeFile || !resumeTitle.trim()) return
     setBusy('resume'); setError('')
     try {
-      const upload = await api.upload(resumeFile, 'RESUME'); const parsed = await api.parse(upload.fileId)
-      await api.chunk(parsed.documentId); await api.embed(parsed.documentId)
-      const resume = await api.createResume(parsed.documentId, resumeTitle); setResumeId(resume.resumeId); await onResourcesChanged()
+      const upload = await api.upload(resumeFile, 'RESUME'); const processed = await api.processFile(upload.fileId)
+      const resume = await api.createResume(processed.documentId, resumeTitle); setResumeId(resume.resumeId); await onResourcesChanged()
     } catch (reason) { setError(reason instanceof Error ? reason.message : '简历导入失败') } finally { setBusy('') }
   }
   async function importJob() {
     if (!jdFile || !position.trim()) return
     setBusy('job'); setError('')
     try {
-      const upload = await api.upload(jdFile, 'JD'); const parsed = await api.parse(upload.fileId)
-      await api.chunk(parsed.documentId); await api.embed(parsed.documentId)
-      const job = await api.createJob(parsed.documentId, company, position); setJobId(job.jobId); await onResourcesChanged()
+      const upload = await api.upload(jdFile, 'JD'); const processed = await api.processFile(upload.fileId)
+      const job = await api.createJob(processed.documentId, company, position); setJobId(job.jobId); await onResourcesChanged()
     } catch (reason) { setError(reason instanceof Error ? reason.message : '岗位导入失败') } finally { setBusy('') }
   }
   async function start() {
@@ -312,16 +325,31 @@ function TaskList({ tasks, onSelect }: { tasks: CareerTask[]; onSelect: (id: num
 }
 
 function TaskDetail({ id, onBack, onChanged }: { id: number; onBack: () => void; onChanged: () => Promise<void> }) {
-  const [task, setTask] = useState<CareerTask | null>(null); const [logs, setLogs] = useState<TaskLog[]>([]); const [error, setError] = useState('')
-  const load = useCallback(async () => { try { const [next, logData] = await Promise.all([api.task(id), api.logs(id)]); setTask(next); setLogs(logData.items) } catch (reason) { setError(reason instanceof Error ? reason.message : '加载失败') } }, [id])
+  const [task, setTask] = useState<CareerTask | null>(null); const [logs, setLogs] = useState<TaskLog[]>([]); const [tools, setTools] = useState<ToolCall[]>([]); const [error, setError] = useState('')
+  const load = useCallback(async () => { try { const [next, logData] = await Promise.all([api.task(id), api.logs(id)]); setTask(next); setLogs(logData.items); setTools(logData.toolCalls || []) } catch (reason) { setError(reason instanceof Error ? reason.message : '加载失败') } }, [id])
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load]); useEffect(() => { if (!task || ['SUCCESS', 'FAILED'].includes(task.status)) return; const timer = setInterval(() => void load(), 1500); return () => clearInterval(timer) }, [task, load])
   if (!task) return <div className="loading-line">正在加载任务...</div>
   return <><button className="back-link" onClick={onBack}><ArrowLeft size={16} />返回任务列表</button>
     <section className="task-head"><div><Status status={task.status} /><h2>任务 #{task.taskId}</h2><code>{task.traceId}</code></div><div className="progress-ring" style={{ '--progress': `${task.progress * 3.6}deg` } as CSSProperties}><span>{task.progress}%</span></div></section>
     {task.errorMessage && <div className="alert"><CircleAlert size={16} />{task.errorMessage}<button className="secondary small" onClick={async () => { const next = await api.retryTask(id); await onChanged(); setTask(next) }}>重试</button></div>}
-    <section className="plain-section"><SectionTitle title="执行轨迹" /><div className="timeline">{logs.map((log, index) => <div className="timeline-item" key={log.logId}><div className="timeline-dot">{log.status === 'SUCCESS' ? <Check /> : log.status === 'FAILED' ? <X /> : <Clock3 />}</div><div><div className="log-heading"><strong>{statusLabel[log.stepName] || log.stepName}</strong><span>{log.durationMs ? `${log.durationMs} ms` : '执行中'}</span></div><p>{log.outputSummary || log.errorMessage || log.agentName}</p><div className="log-meta"><code>{log.agentName}</code>{log.totalTokens != null && <span>{log.totalTokens} tokens</span>}<time>{formatDate(log.updatedAt)}</time></div></div>{index < logs.length - 1 && <span className="timeline-line" />}</div>)}{!logs.length && <Empty icon={<Activity />} text="等待 Agent 开始执行" />}</div></section>
+    <section className="plain-section"><SectionTitle title="执行轨迹" /><div className="timeline">{logs.map((log, index) => {
+      const stepTools = log.status === 'STEP_STARTED'
+        ? tools.filter(tool => tool.agentName === log.agentName)
+        : []
+      const completed = ['STEP_COMPLETED', 'TASK_COMPLETED'].includes(log.status); const failed = log.status === 'STEP_FAILED'
+      return <div className="timeline-item" key={log.logId}><div className="timeline-dot">{completed ? <Check /> : failed ? <X /> : <Clock3 />}</div><div><div className="log-heading"><strong>{statusLabel[log.stepName] || log.stepName}</strong><span>{log.durationMs ? `${log.durationMs} ms` : '执行中'}</span></div><p>{log.outputSummary || log.errorMessage || log.agentName}</p>{stepTools.length > 0 && <div className="tool-list">{stepTools.map(tool => <ToolCard key={tool.toolCallId} tool={tool} />)}</div>}<div className="log-meta"><code>{log.agentName}</code>{log.totalTokens != null && <span>{log.totalTokens} tokens</span>}<time>{formatDate(log.updatedAt)}</time></div></div>{index < logs.length - 1 && <span className="timeline-line" />}</div>
+    })}{!logs.length && <Empty icon={<Activity />} text="等待 Agent 开始执行" />}</div></section>
     {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
   </>
+}
+
+function ToolCard({ tool }: { tool: ToolCall }) {
+  const done = tool.status === 'TOOL_COMPLETED'; const failed = tool.status === 'TOOL_FAILED'
+  return <div className={`tool-card ${failed ? 'failed' : done ? 'done' : 'running'}`}>
+    <div><code>{tool.toolName}</code><span>{done ? '成功' : failed ? '失败' : '运行中'}</span>{tool.durationMs != null && <small>{tool.durationMs} ms</small>}</div>
+    <p>{JSON.stringify(tool.inputSummary || {})}</p>
+    {(tool.resultSummary || tool.errorMessage) && <small>{tool.errorMessage || JSON.stringify(tool.resultSummary)}</small>}
+  </div>
 }
 
 function ReportList({ reports, onSelect }: { reports: ReportSummary[]; onSelect: (id: number) => void }) {

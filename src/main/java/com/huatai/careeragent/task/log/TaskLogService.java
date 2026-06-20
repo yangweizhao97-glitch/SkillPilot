@@ -10,18 +10,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import com.huatai.careeragent.agent.tool.ToolCallLogRepository;
+import com.huatai.careeragent.task.log.TaskLogDtos.ToolCallItem;
 
 @Service
 public class TaskLogService {
     private final AgentTaskRepository agentTaskRepository;
     private final AgentExecutionLogRepository executionLogRepository;
+    private final ToolCallLogRepository toolCallLogRepository;
 
     public TaskLogService(
             AgentTaskRepository agentTaskRepository,
-            AgentExecutionLogRepository executionLogRepository
+            AgentExecutionLogRepository executionLogRepository,
+            ToolCallLogRepository toolCallLogRepository
     ) {
         this.agentTaskRepository = agentTaskRepository;
         this.executionLogRepository = executionLogRepository;
+        this.toolCallLogRepository = toolCallLogRepository;
     }
 
     @Transactional(readOnly = true)
@@ -37,6 +42,9 @@ public class TaskLogService {
                 .stream()
                 .map(TaskLogItem::from)
                 .toList();
-        return new TaskLogResponse(taskId, task.getTraceId(), items);
+        List<ToolCallItem> toolCalls = toolCallLogRepository
+                .findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(taskId, userId).stream()
+                .map(ToolCallItem::from).toList();
+        return new TaskLogResponse(taskId, task.getTraceId(), items, toolCalls);
     }
 }

@@ -37,4 +37,7 @@ public final class FileDtos {
             return new ParseFileResponse(uploadedFile.getId(), documentId, uploadedFile.getParseStatus());
         }
     }
+
+    public record ProcessFileResponse(Long fileId, Long documentId, ParseStatus status,
+                                      int chunkCount, int embeddedCount) { }
 }

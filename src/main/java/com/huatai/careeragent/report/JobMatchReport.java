@@ -19,6 +19,7 @@ public class JobMatchReport {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(name = "user_id", nullable = false) private Long userId;
+    @Column(name = "task_id", nullable = false) private Long taskId;
     @Column(name = "resume_id", nullable = false) private Long resumeId;
     @Column(name = "job_id", nullable = false) private Long jobId;
     @Column(nullable = false) private int version;
@@ -30,8 +31,9 @@ public class JobMatchReport {
 
     protected JobMatchReport() { }
 
-    public JobMatchReport(Long userId, Long resumeId, Long jobId, int version, Map<String, Object> resultJson) {
+    public JobMatchReport(Long userId, Long taskId, Long resumeId, Long jobId, int version, Map<String, Object> resultJson) {
         this.userId = userId;
+        this.taskId = taskId;
         this.resumeId = resumeId;
         this.jobId = jobId;
         this.version = version;
@@ -41,6 +43,7 @@ public class JobMatchReport {
 
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
+    public Long getTaskId() { return taskId; }
     public Long getResumeId() { return resumeId; }
     public Long getJobId() { return jobId; }
     public int getVersion() { return version; }

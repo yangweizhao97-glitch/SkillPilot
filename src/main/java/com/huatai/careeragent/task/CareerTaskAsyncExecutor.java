@@ -13,11 +13,10 @@ import java.util.concurrent.CompletableFuture;
 public class CareerTaskAsyncExecutor {
     private static final Logger log = LoggerFactory.getLogger(CareerTaskAsyncExecutor.class);
     private static final List<WorkflowStatus> EXECUTION_ORDER = List.of(
-            WorkflowStatus.PARSING_FILE,
-            WorkflowStatus.EMBEDDING,
             WorkflowStatus.MATCHING_JOB,
             WorkflowStatus.ANALYZING_RESUME,
             WorkflowStatus.GENERATING_QUESTIONS,
+            WorkflowStatus.GENERATING_FINAL_REPORT,
             WorkflowStatus.SUCCESS
     );
 
@@ -34,11 +33,14 @@ public class CareerTaskAsyncExecutor {
         TraceIdContext.set(traceId);
         try {
             for (WorkflowStatus status : EXECUTION_ORDER) {
-                if (status == WorkflowStatus.SUCCESS) {
-                    stepHandler.execute(taskId, status);
-                }
                 stateService.transition(taskId, status);
-                if (status != WorkflowStatus.SUCCESS) stepHandler.execute(taskId, status);
+                if (status != WorkflowStatus.SUCCESS) {
+                    long started = System.nanoTime();
+                    stepHandler.execute(taskId, status);
+                    if (status == WorkflowStatus.GENERATING_FINAL_REPORT) {
+                        stateService.completeStep(taskId, status, (System.nanoTime() - started) / 1_000_000);
+                    }
+                }
             }
             log.info("Career task completed: taskId={}", taskId);
             return CompletableFuture.completedFuture(null);

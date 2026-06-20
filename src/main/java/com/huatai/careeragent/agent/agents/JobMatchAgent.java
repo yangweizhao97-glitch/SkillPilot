@@ -9,7 +9,6 @@ import com.huatai.careeragent.agent.tool.AgentNames;
 import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
-import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
 import com.huatai.careeragent.report.ReportService;
@@ -23,11 +22,11 @@ import java.util.Set;
 public class JobMatchAgent implements Agent<JobMatchAgent.Input, JobMatchReportResponse> {
     private final AgentToolGateway tools;
     private final AgentOutputSupport outputSupport;
-    private final LlmClient llmClient;
+    private final AgentLlmGateway llmClient;
     private final SchemaRepairService schemaRepairService;
     private final ReportService reportService;
 
-    public JobMatchAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, LlmClient llmClient,
+    public JobMatchAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, AgentLlmGateway llmClient,
                          SchemaRepairService schemaRepairService, ReportService reportService) {
         this.tools = tools;
         this.outputSupport = outputSupport;
@@ -56,12 +55,13 @@ public class JobMatchAgent implements Agent<JobMatchAgent.Input, JobMatchReportR
                         outputSupport.json(knowledge)
                 ),
                 context.traceId(), true
-        ));
+        ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(
                 "job_match_result.schema.json", response.content(), context.traceId()
         );
         outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
-        JobMatchReportResponse saved = reportService.saveJobMatch(context.userId(), input.resumeId(), input.jobId(), validated.value());
+        JobMatchReportResponse saved = reportService.saveJobMatch(
+                context.userId(), context.taskId(), input.resumeId(), input.jobId(), validated.value());
         return AgentResult.success(saved, "jobMatchReportId=" + saved.reportId(),
                 outputSupport.totalUsage(response.usage(), validated));
     }

@@ -54,8 +54,11 @@ public class FinalReportService {
     }
 
     @Transactional
-    public FinalReportResponse refresh(Long userId, Long resumeId, Long jobId) {
-        return generate(userId, resumeId, jobId, null);
+    public FinalReportResponse refresh(Long userId, Long taskId) {
+        AgentTask task = taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new BusinessException("CAREER_TASK_NOT_FOUND", "Career task not found",
+                        HttpStatus.NOT_FOUND));
+        return generate(userId, task.getResumeId(), task.getJobId(), taskId);
     }
 
     @Transactional(readOnly = true)
@@ -79,13 +82,14 @@ public class FinalReportService {
         Job job = jobRepository.findByIdAndUserId(jobId, userId)
                 .orElseThrow(() -> new BusinessException("JOB_NOT_FOUND", "Job not found", HttpStatus.NOT_FOUND));
 
-        JobMatchReport match = jobMatchRepository
-                .findFirstByUserIdAndResumeIdAndJobIdOrderByVersionDesc(userId, resumeId, jobId).orElse(null);
-        ResumeAnalysisReport analysis = resumeAnalysisRepository
-                .findFirstByUserIdAndResumeIdOrderByVersionDesc(userId, resumeId).orElse(null);
-        List<InterviewQuestion> questions = taskId == null
-                ? questionRepository.findByUserIdAndResumeIdAndJobIdOrderByCreatedAtDescIdDesc(userId, resumeId, jobId)
-                : questionRepository.findByUserIdAndTaskIdOrderByCreatedAtAscIdAsc(userId, taskId);
+        if (taskId == null) {
+            throw new BusinessException("TASK_ID_REQUIRED", "Final reports must be generated from one career task",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        JobMatchReport match = jobMatchRepository.findByUserIdAndTaskId(userId, taskId).orElse(null);
+        ResumeAnalysisReport analysis = resumeAnalysisRepository.findByUserIdAndTaskId(userId, taskId).orElse(null);
+        List<InterviewQuestion> questions = questionRepository
+                .findByUserIdAndTaskIdOrderByCreatedAtAscIdAsc(userId, taskId);
 
         Map<String, Object> matchSection = reportSection(match);
         Map<String, Object> analysisSection = reportSection(analysis);
@@ -191,4 +195,3 @@ public class FinalReportService {
         return value == null ? null : String.valueOf(value);
     }
 }
-

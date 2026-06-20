@@ -19,6 +19,7 @@ public class ResumeAnalysisReport {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(name = "user_id", nullable = false) private Long userId;
+    @Column(name = "task_id", nullable = false) private Long taskId;
     @Column(name = "resume_id", nullable = false) private Long resumeId;
     @Column(nullable = false) private int version;
     @JdbcTypeCode(SqlTypes.JSON)
@@ -29,8 +30,9 @@ public class ResumeAnalysisReport {
 
     protected ResumeAnalysisReport() { }
 
-    public ResumeAnalysisReport(Long userId, Long resumeId, int version, Map<String, Object> resultJson) {
+    public ResumeAnalysisReport(Long userId, Long taskId, Long resumeId, int version, Map<String, Object> resultJson) {
         this.userId = userId;
+        this.taskId = taskId;
         this.resumeId = resumeId;
         this.version = version;
         this.resultJson = Map.copyOf(resultJson);
@@ -39,6 +41,7 @@ public class ResumeAnalysisReport {
 
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
+    public Long getTaskId() { return taskId; }
     public Long getResumeId() { return resumeId; }
     public int getVersion() { return version; }
     public Map<String, Object> getResultJson() { return resultJson; }

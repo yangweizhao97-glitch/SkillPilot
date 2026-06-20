@@ -37,8 +37,8 @@ public class FinalReportController {
     @PostMapping("/refresh")
     public ApiResponse<FinalReportResponse> refresh(CurrentUser currentUser,
                                                      @Valid @RequestBody RefreshReportRequest request) {
-        return ApiResponse.ok(reportService.refresh(currentUser.userId(), request.resumeId(), request.jobId()));
+        return ApiResponse.ok(reportService.refresh(currentUser.userId(), request.taskId()));
     }
 
-    public record RefreshReportRequest(@NotNull Long resumeId, @NotNull Long jobId) { }
+    public record RefreshReportRequest(@NotNull Long taskId) { }
 }

@@ -34,6 +34,7 @@ public class ToolExecutor {
     public ToolResponse<?> execute(ToolRequest<?> request) {
         long start = System.nanoTime();
         Map<String, Object> input = request == null ? null : sanitizer.sanitize(request.input());
+        String toolCallId = canLog(request) ? logService.start(request, input) : null;
         try {
             validate(request);
             Tool<?, ?> tool = registry.getRequired(request.toolName());
@@ -42,23 +43,20 @@ public class ToolExecutor {
             }
             permissionChecker.check(tool, request.context());
             Object output = invoke(tool, request.input(), request.context());
-            logService.record(
-                    request,
-                    input,
-                    sanitizer.sanitize(output),
-                    ToolCallStatus.SUCCESS,
+            logService.complete(
+                    toolCallId, sanitizer.sanitize(output), ToolCallStatus.TOOL_COMPLETED,
                     elapsedMs(start),
                     null
             );
             return ToolResponse.success(output);
         } catch (ToolException exception) {
-            recordFailure(request, input, start, exception.getMessage());
+            recordFailure(toolCallId, start, exception.getMessage());
             return ToolResponse.failure(exception.getCode(), exception.getMessage(), exception.isRetryable());
         } catch (BusinessException exception) {
-            recordFailure(request, input, start, exception.getMessage());
+            recordFailure(toolCallId, start, exception.getMessage());
             return ToolResponse.failure(exception.getCode(), exception.getMessage(), false);
         } catch (RuntimeException exception) {
-            recordFailure(request, input, start, exception.getMessage());
+            recordFailure(toolCallId, start, exception.getMessage());
             return ToolResponse.failure("TOOL_EXECUTION_FAILED", "Tool execution failed", true);
         }
     }
@@ -83,12 +81,16 @@ public class ToolExecutor {
         return tool.execute((I) input, context);
     }
 
-    private void recordFailure(ToolRequest<?> request, Map<String, Object> input, long start, String message) {
-        if (request != null && request.context() != null
-                && request.context().userId() != null && request.context().taskId() != null
-                && request.context().traceId() != null && request.context().agentName() != null) {
-            logService.record(request, input, null, ToolCallStatus.FAILED, elapsedMs(start), message);
+    private void recordFailure(String toolCallId, long start, String message) {
+        if (toolCallId != null) {
+            logService.complete(toolCallId, null, ToolCallStatus.TOOL_FAILED, elapsedMs(start), message);
         }
+    }
+
+    private boolean canLog(ToolRequest<?> request) {
+        return request != null && request.context() != null
+                && request.context().userId() != null && request.context().taskId() != null
+                && request.context().traceId() != null && request.context().agentName() != null;
     }
 
     private long elapsedMs(long start) {

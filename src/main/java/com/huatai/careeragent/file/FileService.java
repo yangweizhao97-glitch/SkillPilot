@@ -15,6 +15,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import com.huatai.careeragent.knowledge.chunk.DocumentChunkService;
+import com.huatai.careeragent.knowledge.embedding.DocumentEmbeddingService;
+import com.huatai.careeragent.file.FileDtos.ProcessFileResponse;
 
 @Service
 public class FileService {
@@ -22,17 +25,23 @@ public class FileService {
     private final LocalFileStorageService localFileStorageService;
     private final DocumentParserService documentParserService;
     private final DocumentRepository documentRepository;
+    private final DocumentChunkService chunkService;
+    private final DocumentEmbeddingService embeddingService;
 
     public FileService(
             UploadedFileRepository uploadedFileRepository,
             LocalFileStorageService localFileStorageService,
             DocumentParserService documentParserService,
-            DocumentRepository documentRepository
+            DocumentRepository documentRepository,
+            DocumentChunkService chunkService,
+            DocumentEmbeddingService embeddingService
     ) {
         this.uploadedFileRepository = uploadedFileRepository;
         this.localFileStorageService = localFileStorageService;
         this.documentParserService = documentParserService;
         this.documentRepository = documentRepository;
+        this.chunkService = chunkService;
+        this.embeddingService = embeddingService;
     }
 
     @Transactional
@@ -104,5 +113,24 @@ public class FileService {
         document.replaceContent(uploadedFile.getFileName(), parseResult.contentText(), parseResult.metadata());
         Document savedDocument = documentRepository.save(document);
         return ParseFileResponse.success(uploadedFile, savedDocument.getId());
+    }
+
+    @Transactional(noRollbackFor = BusinessException.class)
+    public ProcessFileResponse process(Long userId, Long fileId) {
+        UploadedFile file = uploadedFileRepository.findByIdAndUserId(fileId, userId)
+                .orElseThrow(() -> new BusinessException("FILE_NOT_FOUND", "File not found", HttpStatus.NOT_FOUND));
+        try {
+            file.markStatus(ParseStatus.PARSING);
+            ParseFileResponse parsed = parse(userId, fileId);
+            file.markStatus(ParseStatus.CHUNKING);
+            int chunks = chunkService.chunkDocument(userId, parsed.documentId()).chunkCount();
+            file.markStatus(ParseStatus.EMBEDDING);
+            int embedded = embeddingService.embedDocument(userId, parsed.documentId()).embeddedChunkCount();
+            file.markStatus(ParseStatus.READY);
+            return new ProcessFileResponse(fileId, parsed.documentId(), ParseStatus.READY, chunks, embedded);
+        } catch (BusinessException exception) {
+            file.markParseFailed(exception.getMessage());
+            throw exception;
+        }
     }
 }

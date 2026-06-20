@@ -11,7 +11,6 @@ import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.interview.InterviewQuestionService;
 import com.huatai.careeragent.interview.InterviewQuestionService.InterviewQuestionResponse;
-import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
 import org.springframework.stereotype.Component;
@@ -23,11 +22,11 @@ import java.util.Set;
 public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Input, List<InterviewQuestionResponse>> {
     private final AgentToolGateway tools;
     private final AgentOutputSupport outputSupport;
-    private final LlmClient llmClient;
+    private final AgentLlmGateway llmClient;
     private final SchemaRepairService schemaRepairService;
     private final InterviewQuestionService questionService;
 
-    public InterviewQuestionAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, LlmClient llmClient,
+    public InterviewQuestionAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, AgentLlmGateway llmClient,
                                   SchemaRepairService schemaRepairService, InterviewQuestionService questionService) {
         this.tools = tools;
         this.outputSupport = outputSupport;
@@ -56,7 +55,7 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
                         outputSupport.json(knowledge)
                 ),
                 context.traceId(), true
-        ));
+        ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(
                 "interview_questions.schema.json", response.content(), context.traceId()
         );

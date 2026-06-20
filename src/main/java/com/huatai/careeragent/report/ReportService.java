@@ -32,18 +32,18 @@ public class ReportService {
     }
 
     @Transactional
-    public JobMatchReportResponse saveJobMatch(Long userId, Long resumeId, Long jobId, JsonNode result) {
+    public JobMatchReportResponse saveJobMatch(Long userId, Long taskId, Long resumeId, Long jobId, JsonNode result) {
         int version = jobMatchRepository.maxVersion(resumeId, jobId) + 1;
         return JobMatchReportResponse.from(jobMatchRepository.save(
-                new JobMatchReport(userId, resumeId, jobId, version, toMap(result))
+                new JobMatchReport(userId, taskId, resumeId, jobId, version, toMap(result))
         ));
     }
 
     @Transactional
-    public ResumeAnalysisReportResponse saveResumeAnalysis(Long userId, Long resumeId, JsonNode result) {
+    public ResumeAnalysisReportResponse saveResumeAnalysis(Long userId, Long taskId, Long resumeId, JsonNode result) {
         int version = resumeAnalysisRepository.maxVersion(resumeId) + 1;
         return ResumeAnalysisReportResponse.from(resumeAnalysisRepository.save(
-                new ResumeAnalysisReport(userId, resumeId, version, toMap(result))
+                new ResumeAnalysisReport(userId, taskId, resumeId, version, toMap(result))
         ));
     }
 

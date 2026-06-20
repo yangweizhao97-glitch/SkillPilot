@@ -31,7 +31,15 @@ public class CareerTaskStateService {
     public void fail(Long taskId, String errorMessage) {
         AgentTask task = agentTaskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
+        WorkflowStatus failedStep = task.getStatus();
         task.fail(errorMessage);
-        executionLogRepository.save(AgentExecutionLog.failure(task, errorMessage));
+        executionLogRepository.save(AgentExecutionLog.failure(task, failedStep, errorMessage));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void completeStep(Long taskId, WorkflowStatus status, long durationMs) {
+        AgentTask task = agentTaskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
+        executionLogRepository.save(AgentExecutionLog.completed(task, status, durationMs));
     }
 }

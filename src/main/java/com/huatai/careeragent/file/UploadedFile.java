@@ -121,6 +121,11 @@ public class UploadedFile {
         this.errorMessage = null;
     }
 
+    public void markStatus(ParseStatus status) {
+        this.parseStatus = status;
+        if (status != ParseStatus.FAILED) this.errorMessage = null;
+    }
+
     public void markParseFailed(String errorMessage) {
         this.parseStatus = ParseStatus.FAILED;
         this.errorMessage = summarize(errorMessage);

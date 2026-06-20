@@ -15,23 +15,27 @@ public class ToolCallLogService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(
+    public String start(
             ToolRequest<?> request,
-            Map<String, Object> input,
+            Map<String, Object> input
+    ) {
+        ToolCallLog log = repository.save(new ToolCallLog(
+                request.context(), request.toolName(), input, null,
+                ToolCallStatus.TOOL_STARTED, 0, null, request.retryCount()
+        ));
+        return log.getToolCallId();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void complete(
+            String toolCallId,
             Map<String, Object> output,
             ToolCallStatus status,
             long durationMs,
             String errorMessage
     ) {
-        repository.save(new ToolCallLog(
-                request.context(),
-                request.toolName(),
-                input,
-                output,
-                status,
-                durationMs,
-                errorMessage,
-                request.retryCount()
-        ));
+        ToolCallLog log = repository.findByToolCallId(toolCallId)
+                .orElseThrow(() -> new IllegalStateException("Tool call not found: " + toolCallId));
+        log.complete(output, status, durationMs, errorMessage);
     }
 }

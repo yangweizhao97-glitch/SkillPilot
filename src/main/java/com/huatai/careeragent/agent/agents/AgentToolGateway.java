@@ -35,7 +35,9 @@ public class AgentToolGateway {
     public SearchUserKnowledgeBaseTool.Output search(String query, AgentContext context, String agentName) {
         return invoke(
                 SearchUserKnowledgeBaseTool.NAME,
-                new SearchUserKnowledgeBaseTool.Input(query, List.of(FileType.NOTE, FileType.PROJECT_DOC), 8, RetrievalMode.HYBRID),
+                new SearchUserKnowledgeBaseTool.Input(query,
+                        List.of(FileType.RESUME, FileType.JD, FileType.NOTE, FileType.PROJECT_DOC),
+                        8, RetrievalMode.HYBRID),
                 context, agentName, SearchUserKnowledgeBaseTool.Output.class
         );
     }

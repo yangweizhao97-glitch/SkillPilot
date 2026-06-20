@@ -85,7 +85,7 @@ public class AgentTask {
             throw new IllegalStateException("Invalid workflow transition: " + status + " -> " + next);
         }
         Instant now = Instant.now();
-        if (status == WorkflowStatus.PENDING && next == WorkflowStatus.PARSING_FILE) {
+        if (status == WorkflowStatus.PENDING && next == WorkflowStatus.MATCHING_JOB) {
             startedAt = now;
         }
         status = next;

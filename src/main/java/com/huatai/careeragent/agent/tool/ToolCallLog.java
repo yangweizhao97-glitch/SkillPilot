@@ -14,6 +14,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 @Entity
 @Table(name = "tool_call_logs")
@@ -21,6 +22,9 @@ public class ToolCallLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "tool_call_id", nullable = false, unique = true, length = 36)
+    private String toolCallId;
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
@@ -85,6 +89,7 @@ public class ToolCallLog {
             int retryCount
     ) {
         this.userId = context.userId();
+        this.toolCallId = UUID.randomUUID().toString();
         this.taskId = context.taskId();
         this.traceId = context.traceId();
         this.agentName = context.agentName();
@@ -97,6 +102,13 @@ public class ToolCallLog {
         this.retryCount = retryCount;
     }
 
+    public void complete(Map<String, Object> output, ToolCallStatus status, long durationMs, String errorMessage) {
+        this.output = output;
+        this.status = status;
+        this.durationMs = durationMs;
+        this.errorMessage = summarize(errorMessage);
+    }
+
     private String summarize(String value) {
         if (value == null) {
             return null;
@@ -105,6 +117,7 @@ public class ToolCallLog {
     }
 
     public Long getId() { return id; }
+    public String getToolCallId() { return toolCallId; }
     public Long getUserId() { return userId; }
     public Long getTaskId() { return taskId; }
     public String getTraceId() { return traceId; }

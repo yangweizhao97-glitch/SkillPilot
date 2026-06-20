@@ -35,10 +35,11 @@ public class CareerWorkflowService {
     public void executeStep(Long taskId, WorkflowStatus status) {
         AgentTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
-        if (status == WorkflowStatus.SUCCESS) {
+        if (status == WorkflowStatus.GENERATING_FINAL_REPORT) {
             if (task.getJobId() != null) finalReportService.generateForTask(taskId);
             return;
         }
+        if (status == WorkflowStatus.SUCCESS) return;
         if (!task.getEnabledSteps().contains(status)) {
             return;
         }

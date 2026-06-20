@@ -5,23 +5,24 @@ import java.util.Map;
 
 public enum WorkflowStatus {
     PENDING(0),
-    PARSING_FILE(10),
-    EMBEDDING(30),
-    MATCHING_JOB(50),
-    ANALYZING_RESUME(65),
-    GENERATING_QUESTIONS(80),
+    MATCHING_JOB(10),
+    ANALYZING_RESUME(40),
+    GENERATING_QUESTIONS(70),
+    GENERATING_FINAL_REPORT(90),
     SUCCESS(100),
-    FAILED(100);
+    FAILED(100),
+    /** Legacy document states; never used by career analysis execution. */
+    @Deprecated PARSING_FILE(0),
+    @Deprecated EMBEDDING(0);
 
     private static final Map<WorkflowStatus, WorkflowStatus> NEXT = new EnumMap<>(WorkflowStatus.class);
 
     static {
-        NEXT.put(PENDING, PARSING_FILE);
-        NEXT.put(PARSING_FILE, EMBEDDING);
-        NEXT.put(EMBEDDING, MATCHING_JOB);
+        NEXT.put(PENDING, MATCHING_JOB);
         NEXT.put(MATCHING_JOB, ANALYZING_RESUME);
         NEXT.put(ANALYZING_RESUME, GENERATING_QUESTIONS);
-        NEXT.put(GENERATING_QUESTIONS, SUCCESS);
+        NEXT.put(GENERATING_QUESTIONS, GENERATING_FINAL_REPORT);
+        NEXT.put(GENERATING_FINAL_REPORT, SUCCESS);
     }
 
     private final int progress;
