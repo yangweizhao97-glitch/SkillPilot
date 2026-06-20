@@ -912,6 +912,22 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 10.5 完成
 
+## Phase 12：LangGraph 可替换编排层
+
+**Description:** 在不迁移业务数据和工具权限的前提下，引入独立 LangGraph 编排服务；Spring Boot 继续负责节点执行、状态、日志、报告和失败落库。
+
+**Acceptance criteria:**
+- [x] 新增 `AgentWorkflowExecutor`，现有 Spring 编排成为默认实现和稳定 fallback。
+- [x] LangGraph 适配器透传 `taskId`、`traceId` 和启用步骤。
+- [x] 远程计划必须通过节点白名单、完整性和顺序校验后才能执行。
+- [x] LangGraph 不可用或计划非法时可配置 fallback 或任务失败。
+- [x] 提供 FastAPI/LangGraph 容器、健康检查和 HTTP 合同测试。
+- [x] 完整后端、前端和 LangGraph 服务验证通过。
+
+**Release target:** `v0.2.0`
+
+**Dependencies:** Phase 11 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

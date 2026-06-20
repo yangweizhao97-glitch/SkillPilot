@@ -30,6 +30,21 @@ services:
       timeout: 5s
       retries: 10
 
+  langgraph:
+    profiles: ["langgraph"]
+    build:
+      context: ./orchestrator
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    container_name: career-agent-langgraph
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   career_agent_postgres_data:
   career_agent_redis_data:

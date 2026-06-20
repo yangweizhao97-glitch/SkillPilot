@@ -54,6 +54,19 @@ cd frontend && npm ci && npm run check
 
 Backend integration tests use PostgreSQL and Redis but mock external LLM calls. No real model key is required for tests.
 
+## LangGraph Workflow Engine
+
+Spring remains the default stable workflow engine. To run the optional LangGraph orchestrator:
+
+```bash
+docker compose --profile langgraph up -d langgraph
+export WORKFLOW_ENGINE=langgraph
+export LANGGRAPH_BASE_URL=http://localhost:8090
+JAVA_HOME=/path/to/jdk ./mvnw spring-boot:run
+```
+
+If the orchestrator is unavailable or returns a plan that violates the workflow state contract, Spring fallback is used by default. Set `LANGGRAPH_FALLBACK_ENABLED=false` to fail the task instead.
+
 ## Environment
 
 The complete template is [.env.example](.env.example). Important variables:
@@ -68,6 +81,9 @@ The complete template is [.env.example](.env.example). Important variables:
 | `CHAT_MODEL` | Chat model | `qwen-flash` |
 | `UPLOAD_DIR` | Local upload storage | `./data/uploads` |
 | `MAX_UPLOAD_SIZE` | Upload limit | `20MB` |
+| `WORKFLOW_ENGINE` | Workflow engine: `spring` or `langgraph` | `spring` |
+| `LANGGRAPH_BASE_URL` | LangGraph orchestrator URL | `http://localhost:8090` |
+| `LANGGRAPH_FALLBACK_ENABLED` | Fall back to Spring on orchestration failure | `true` |
 
 ## Main APIs
 

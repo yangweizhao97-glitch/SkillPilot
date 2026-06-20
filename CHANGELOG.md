@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-06-21
+
+- Introduced the missing `AgentWorkflowExecutor` boundary with the existing Spring workflow as the default engine.
+- Added a configurable LangGraph HTTP adapter with task/trace propagation and strict workflow-plan validation.
+- Added automatic Spring fallback for unavailable or invalid remote orchestration plans.
+- Added a containerized FastAPI/LangGraph orchestrator and contract tests.
+- Kept business tools, persistence, reports, state transitions, and audit logs inside Spring Boot.
+
 ## 0.1.2 - 2026-06-20
 
 - Added Schema-validated per-answer interview scoring with fixed weighted dimensions.

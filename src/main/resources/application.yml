@@ -68,3 +68,10 @@ career-agent:
     max-retries: ${AGENT_MAX_RETRIES:2}
     initial-retry-delay: ${AGENT_INITIAL_RETRY_DELAY:100ms}
     task-thread-pool-size: ${AGENT_TASK_THREAD_POOL_SIZE:4}
+  workflow:
+    engine: ${WORKFLOW_ENGINE:spring}
+    langgraph:
+      base-url: ${LANGGRAPH_BASE_URL:http://localhost:8090}
+      connect-timeout: ${LANGGRAPH_CONNECT_TIMEOUT:2s}
+      read-timeout: ${LANGGRAPH_READ_TIMEOUT:10s}
+      fallback-enabled: ${LANGGRAPH_FALLBACK_ENABLED:true}
