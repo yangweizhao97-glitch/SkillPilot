@@ -40,6 +40,22 @@ class JsonSchemaValidatorTest {
     }
 
     @Test
+    void validatesInterviewAnswerEvaluation() {
+        String valid = """
+                {"schemaVersion":"1.0","overallScore":82,"dimensions":[
+                  {"key":"accuracy","label":"准确性","score":85,"rationale":"事实准确"},
+                  {"key":"relevance","label":"相关性","score":82,"rationale":"紧扣题意"},
+                  {"key":"depth","label":"深度","score":78,"rationale":"覆盖主要机制"},
+                  {"key":"communication","label":"表达","score":84,"rationale":"结构清晰"}
+                ],"strengths":["回答准确"],"improvements":["补充边界条件"],
+                "improvedAnswer":"补充边界条件后的示例回答。","followUp":false,"followUpQuestion":""}
+                """;
+        assertThat(validator.validate("interview_answer_evaluation.schema.json", valid).valid()).isTrue();
+        assertThat(validator.validate("interview_answer_evaluation.schema.json",
+                valid.replace("\"overallScore\":82", "\"overallScore\":101")).valid()).isFalse();
+    }
+
+    @Test
     void repairsInvalidOutputWithLlmAndRejectsFailedRepair() {
         LlmClient llmClient = mock(LlmClient.class);
         SchemaRepairService repairService = new SchemaRepairService(validator, llmClient);

@@ -1,6 +1,8 @@
 package com.huatai.careeragent.interview;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huatai.careeragent.agent.schema.SchemaRepairService;
 import com.huatai.careeragent.common.error.BusinessException;
@@ -24,9 +26,13 @@ import java.util.UUID;
 public class InteractiveInterviewService {
     private static final Logger log = LoggerFactory.getLogger(InteractiveInterviewService.class);
     private static final String CLOSING_MESSAGE = "本轮面试已结束。你的回答已经保存，可以返回会话列表查看记录。";
+    private static final Map<String, Integer> SCORE_WEIGHTS = Map.of(
+            "accuracy", 35, "relevance", 25, "depth", 25, "communication", 15
+    );
 
     private final InterviewSessionRepository sessionRepository;
     private final InterviewMessageRepository messageRepository;
+    private final InterviewAnswerEvaluationRepository evaluationRepository;
     private final InterviewQuestionRepository questionRepository;
     private final ResumeRepository resumeRepository;
     private final JobRepository jobRepository;
@@ -36,12 +42,14 @@ public class InteractiveInterviewService {
 
     public InteractiveInterviewService(InterviewSessionRepository sessionRepository,
                                        InterviewMessageRepository messageRepository,
+                                       InterviewAnswerEvaluationRepository evaluationRepository,
                                        InterviewQuestionRepository questionRepository,
                                        ResumeRepository resumeRepository, JobRepository jobRepository,
                                        LlmClient llmClient, SchemaRepairService schemaRepairService,
                                        ObjectMapper objectMapper) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
+        this.evaluationRepository = evaluationRepository;
         this.questionRepository = questionRepository;
         this.resumeRepository = resumeRepository;
         this.jobRepository = jobRepository;
@@ -91,13 +99,16 @@ public class InteractiveInterviewService {
         InterviewSession session = requireSessionForUpdate(userId, sessionId);
         requireInProgress(session);
         InterviewQuestion current = requireQuestion(userId, session.currentQuestionId());
-        addMessage(session, current.getId(), InterviewMessageRole.CANDIDATE, answer.trim());
+        InterviewMessage candidateMessage = addMessage(
+                session, current.getId(), InterviewMessageRole.CANDIDATE, answer.trim()
+        );
+
+        AnswerEvaluationDecision decision = evaluateAnswer(session, current, candidateMessage, answer.trim());
 
         if (session.getFollowUpCount() == 0) {
-            FollowUpDecision decision = followUpDecision(session, current, answer.trim());
-            if (decision.followUp() && !decision.message().isBlank()) {
+            if (decision.followUp() && !decision.followUpQuestion().isBlank()) {
                 session.recordFollowUp();
-                addMessage(session, current.getId(), InterviewMessageRole.INTERVIEWER, decision.message());
+                addMessage(session, current.getId(), InterviewMessageRole.INTERVIEWER, decision.followUpQuestion());
                 return response(session);
             }
         }
@@ -115,7 +126,8 @@ public class InteractiveInterviewService {
         return response(session);
     }
 
-    private FollowUpDecision followUpDecision(InterviewSession session, InterviewQuestion question, String answer) {
+    private AnswerEvaluationDecision evaluateAnswer(InterviewSession session, InterviewQuestion question,
+                                                    InterviewMessage candidateMessage, String answer) {
         try {
             String context = objectMapper.writeValueAsString(Map.of(
                     "question", question.getQuestionText(),
@@ -124,24 +136,58 @@ public class InteractiveInterviewService {
             ));
             String traceId = "interview_" + session.getId() + "_" + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.complete(LlmRequest.secured(
-                    "You are a concise technical interviewer. Return strict JSON only.",
-                    "Decide whether one useful follow-up is needed. Return followUp=true with one short Chinese "
-                            + "question only when the answer is vague or misses an important expected point. "
-                            + "Otherwise return followUp=false and message as an empty string.",
+                    "You are a rigorous but constructive technical interviewer. Return strict JSON only.",
+                    "Score the answer against the question and expected points. Return exactly accuracy, relevance, "
+                            + "depth, and communication with 0-100 integer scores. The server weights them 35%, "
+                            + "25%, 25%, and 15%. Give evidence-based strengths, "
+                            + "specific improvements, and a concise improved Chinese answer. Set followUp=true "
+                            + "with one short question only when a material gap needs clarification; otherwise "
+                            + "set followUp=false and followUpQuestion to an empty string.",
                     List.of(context), traceId, true
             ));
             var validated = schemaRepairService.validateOrRepair(
-                    "interview_turn.schema.json", response.content(), traceId
+                    "interview_answer_evaluation.schema.json", response.content(), traceId
             ).value();
-            return new FollowUpDecision(validated.path("followUp").asBoolean(false),
-                    validated.path("message").asText(""));
+            Map<String, Object> result = objectMapper.convertValue(validated, new TypeReference<>() { });
+            int overallScore = canonicalScore(validated, result);
+            result.put("overallScore", overallScore);
+            evaluationRepository.save(new InterviewAnswerEvaluation(
+                    session.getUserId(), session.getId(), question.getId(), candidateMessage.getId(),
+                    overallScore, result
+            ));
+            return new AnswerEvaluationDecision(validated.path("followUp").asBoolean(false),
+                    validated.path("followUpQuestion").asText(""));
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Could not serialize interview turn", exception);
+            throw new IllegalStateException("Could not serialize interview evaluation", exception);
         } catch (RuntimeException exception) {
-            log.warn("Interview follow-up decision failed; advancing to next question: sessionId={}, reason={}",
+            log.warn("Interview answer evaluation failed; advancing to next question: sessionId={}, reason={}",
                     session.getId(), exception.getMessage());
-            return new FollowUpDecision(false, "");
+            return new AnswerEvaluationDecision(false, "");
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private int canonicalScore(JsonNode validated, Map<String, Object> result) {
+        Map<String, Integer> scores = new java.util.HashMap<>();
+        for (JsonNode dimension : validated.path("dimensions")) {
+            scores.put(dimension.path("key").asText(), dimension.path("score").asInt());
+        }
+        if (!scores.keySet().equals(SCORE_WEIGHTS.keySet())) {
+            throw new IllegalArgumentException("Evaluation must contain every scoring dimension exactly once");
+        }
+        Object rawDimensions = result.get("dimensions");
+        if (rawDimensions instanceof List<?> dimensions) {
+            for (Object rawDimension : dimensions) {
+                if (rawDimension instanceof Map<?, ?> dimension) {
+                    Map<String, Object> mutable = (Map<String, Object>) dimension;
+                    mutable.put("weight", SCORE_WEIGHTS.get(String.valueOf(mutable.get("key"))));
+                }
+            }
+        }
+        double weighted = SCORE_WEIGHTS.entrySet().stream()
+                .mapToDouble(entry -> scores.get(entry.getKey()) * entry.getValue() / 100.0)
+                .sum();
+        return (int) Math.round(weighted);
     }
 
     private void moveNextOrFinish(InterviewSession session) {
@@ -155,9 +201,10 @@ public class InteractiveInterviewService {
         }
     }
 
-    private void addMessage(InterviewSession session, Long questionId, InterviewMessageRole role, String content) {
+    private InterviewMessage addMessage(InterviewSession session, Long questionId,
+                                        InterviewMessageRole role, String content) {
         int nextSequence = messageRepository.maxSequence(session.getId()) + 1;
-        messageRepository.save(new InterviewMessage(
+        return messageRepository.save(new InterviewMessage(
                 session.getUserId(), session.getId(), questionId, role, content, nextSequence
         ));
     }
@@ -200,16 +247,20 @@ public class InteractiveInterviewService {
                 .findByUserIdAndSessionIdOrderBySequenceNoAsc(session.getUserId(), session.getId()).stream()
                 .map(InterviewMessageResponse::from)
                 .toList();
+        List<InterviewAnswerEvaluationResponse> evaluations = evaluationRepository
+                .findByUserIdAndSessionIdOrderByCreatedAtAscIdAsc(session.getUserId(), session.getId()).stream()
+                .map(InterviewAnswerEvaluationResponse::from)
+                .toList();
         return new InterviewSessionResponse(
                 session.getId(), session.getResumeId(), session.getJobId(), session.getStatus(),
-                session.getCurrentQuestionIndex() + 1, session.getQuestionIds().size(), messages,
+                session.getCurrentQuestionIndex() + 1, session.getQuestionIds().size(), messages, evaluations,
                 session.getCreatedAt(), session.getUpdatedAt(), session.getFinishedAt()
         );
     }
 
-    private record FollowUpDecision(boolean followUp, String message) {
-        FollowUpDecision {
-            message = followUp && message != null ? message.trim() : "";
+    private record AnswerEvaluationDecision(boolean followUp, String followUpQuestion) {
+        AnswerEvaluationDecision {
+            followUpQuestion = followUp && followUpQuestion != null ? followUpQuestion.trim() : "";
         }
     }
 
@@ -224,7 +275,20 @@ public class InteractiveInterviewService {
     public record InterviewSessionResponse(Long sessionId, Long resumeId, Long jobId,
                                            InterviewSessionStatus status, int currentQuestion,
                                            int totalQuestions, List<InterviewMessageResponse> messages,
+                                           List<InterviewAnswerEvaluationResponse> evaluations,
                                            Instant createdAt, Instant updatedAt, Instant finishedAt) {
+    }
+
+    public record InterviewAnswerEvaluationResponse(Long evaluationId, Long questionId, Long answerMessageId,
+                                                    int overallScore, Map<String, Object> result,
+                                                    String schemaVersion, Instant createdAt) {
+        static InterviewAnswerEvaluationResponse from(InterviewAnswerEvaluation evaluation) {
+            return new InterviewAnswerEvaluationResponse(
+                    evaluation.getId(), evaluation.getQuestionId(), evaluation.getAnswerMessageId(),
+                    evaluation.getOverallScore(), evaluation.getResultJson(), evaluation.getSchemaVersion(),
+                    evaluation.getCreatedAt()
+            );
+        }
     }
 
     public record InterviewSessionSummary(Long sessionId, Long resumeId, Long jobId,

@@ -488,7 +488,7 @@ POST /api/interview/sessions/{sessionId}/answers/stream
 POST /api/interview/sessions/{sessionId}/finish
 ```
 
-`answers/stream` produces `text/event-stream` and emits interview lifecycle events incrementally. Answer scoring is not part of v0.1.1.
+`answers/stream` produces `text/event-stream` and emits interview lifecycle events incrementally. From v0.1.2 it also emits `INTERVIEW_SCORING`, followed by `INTERVIEW_SCORE_COMPLETED` or `INTERVIEW_SCORE_FAILED`. Completed session payloads include an `evaluations` array; each item is bound to `questionId` and `answerMessageId` and contains the weighted score, dimension evidence, strengths, improvements, and an improved answer.
 
 ## Reports
 

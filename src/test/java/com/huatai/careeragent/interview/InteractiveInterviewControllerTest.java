@@ -72,7 +72,16 @@ class InteractiveInterviewControllerTest {
                 "请说明事务传播行为。", QuestionType.TECHNICAL, QuestionDifficulty.MEDIUM,
                 List.of("REQUIRED", "REQUIRES_NEW"), List.of(), "General question"));
         when(llmClient.complete(any())).thenReturn(new LlmResponse(
-                "{\"followUp\":true,\"message\":\"请举例说明 REQUIRES_NEW。\"}",
+                """
+                {"schemaVersion":"1.0","overallScore":75,"dimensions":[
+                  {"key":"accuracy","label":"准确性","score":75,"rationale":"基本准确"},
+                  {"key":"relevance","label":"相关性","score":80,"rationale":"紧扣题意"},
+                  {"key":"depth","label":"深度","score":65,"rationale":"缺少例子"},
+                  {"key":"communication","label":"表达","score":85,"rationale":"清晰简洁"}
+                ],"strengths":["概念正确"],"improvements":["增加真实场景"],
+                "improvedAnswer":"可以结合独立事务场景解释。","followUp":true,
+                "followUpQuestion":"请举例说明 REQUIRES_NEW。"}
+                """,
                 "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-1"));
 
         String createBody = mockMvc.perform(post("/api/interview/sessions")
@@ -94,6 +103,8 @@ class InteractiveInterviewControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                 .andExpect(content().string(containsString("event:INTERVIEW_ANSWER_RECEIVED")))
                 .andExpect(content().string(containsString("event:INTERVIEW_EVALUATING")))
+                .andExpect(content().string(containsString("event:INTERVIEW_SCORING")))
+                .andExpect(content().string(containsString("event:INTERVIEW_SCORE_COMPLETED")))
                 .andExpect(content().string(containsString("event:INTERVIEW_FOLLOWUP_STREAMING")))
                 .andExpect(content().string(containsString("event:INTERVIEW_FEEDBACK_COMPLETED")));
     }

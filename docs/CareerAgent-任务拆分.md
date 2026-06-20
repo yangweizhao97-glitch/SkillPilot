@@ -901,12 +901,12 @@ docker compose up -d postgres redis minio
 
 **Description:** 在 v0.1.1 稳定基线完成后，为每次回答增加结构化评分、证据说明和可执行的改进建议。
 
-**Planned acceptance criteria:**
-- [ ] 定义评分维度、权重、Schema 和异常降级策略。
-- [ ] 评分结果绑定 `sessionId`、`questionId` 和对应回答，禁止跨会话聚合。
-- [ ] SSE 推送评分中、评分完成和建议完成事件，不流式暴露未校验 JSON。
-- [ ] 前端逐题展示评分依据、优点、缺口和改进示例。
-- [ ] 增加评分 Schema、持久化、用户隔离和端到端测试。
+**Acceptance criteria:**
+- [x] 定义评分维度、固定权重、Schema 和异常降级策略。
+- [x] 评分结果绑定 `sessionId`、`questionId` 和对应回答，禁止跨会话聚合。
+- [x] SSE 推送评分中、评分完成或评分失败事件，不流式暴露未校验 JSON。
+- [x] 前端逐题展示评分依据、优点、缺口和改进示例。
+- [x] 增加评分 Schema、持久化、用户隔离和端到端测试。
 
 **Release target:** `v0.1.2`
 

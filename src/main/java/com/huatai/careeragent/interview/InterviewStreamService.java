@@ -29,8 +29,15 @@ public class InterviewStreamService {
             try {
                 send(emitter, closed, "INTERVIEW_ANSWER_RECEIVED", new Status("回答已接收"));
                 send(emitter, closed, "INTERVIEW_EVALUATING", new Status("正在分析回答"));
+                send(emitter, closed, "INTERVIEW_SCORING", new Status("正在生成评分与改进建议"));
                 InterviewSessionResponse before = interviews.get(userId, sessionId);
                 InterviewSessionResponse after = interviews.answer(userId, sessionId, answer);
+                if (after.evaluations().size() > before.evaluations().size()) {
+                    send(emitter, closed, "INTERVIEW_SCORE_COMPLETED",
+                            new Evaluation(after.evaluations().getLast()));
+                } else {
+                    send(emitter, closed, "INTERVIEW_SCORE_FAILED", new Status("本次评分暂不可用，面试已继续"));
+                }
                 var additions = after.messages().subList(Math.min(before.messages().size() + 1, after.messages().size()),
                         after.messages().size());
                 for (var message : additions) {
@@ -67,4 +74,5 @@ public class InterviewStreamService {
     public record Status(String message) { }
     public record Delta(String delta) { }
     public record Session(InterviewSessionResponse session) { }
+    public record Evaluation(InteractiveInterviewService.InterviewAnswerEvaluationResponse evaluation) { }
 }

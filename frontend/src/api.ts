@@ -24,11 +24,17 @@ export type InterviewMessage = {
   messageId: number; questionId?: number; role: 'INTERVIEWER' | 'CANDIDATE';
   content: string; sequenceNo: number; createdAt: string
 }
+export type InterviewScoreDimension = { key: string; label: string; score: number; weight: number; rationale: string }
+export type InterviewEvaluation = {
+  evaluationId: number; questionId: number; answerMessageId: number; overallScore: number;
+  result: { dimensions: InterviewScoreDimension[]; strengths: string[]; improvements: string[]; improvedAnswer: string };
+  schemaVersion: string; createdAt: string
+}
 export type InterviewSessionSummary = {
   sessionId: number; resumeId: number; jobId: number; status: 'IN_PROGRESS' | 'FINISHED';
   currentQuestion: number; totalQuestions: number; createdAt: string; updatedAt: string; finishedAt?: string
 }
-export type InterviewSession = InterviewSessionSummary & { messages: InterviewMessage[] }
+export type InterviewSession = InterviewSessionSummary & { messages: InterviewMessage[]; evaluations: InterviewEvaluation[] }
 
 type Envelope<T> = { success: boolean; data: T; error?: { code: string; message: string }; traceId?: string }
 

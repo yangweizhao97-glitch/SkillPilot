@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 - 2026-06-20
+
+- Added Schema-validated per-answer interview scoring with fixed weighted dimensions.
+- Bound every evaluation to its user, session, question, and candidate answer message.
+- Combined scoring and follow-up decisions into one model call with safe failure degradation.
+- Added SSE scoring lifecycle events and expandable frontend score cards with actionable feedback.
+- Added Flyway V7 persistence plus Schema, isolation, service, and SSE regression coverage.
+
 ## 0.1.1 - 2026-06-20
 
 - Removed legacy fake workflow and log states and aligned tests with truthful step/tool lifecycle events.

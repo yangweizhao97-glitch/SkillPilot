@@ -2,6 +2,7 @@ package com.huatai.careeragent.interview;
 
 import com.huatai.careeragent.document.Document;
 import com.huatai.careeragent.document.DocumentRepository;
+import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,6 +33,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 class InteractiveInterviewServiceIntegrationTest {
     @Autowired private InteractiveInterviewService service;
+    @Autowired private InterviewAnswerEvaluationRepository evaluationRepository;
     @Autowired private InterviewMessageRepository messageRepository;
     @Autowired private InterviewSessionRepository sessionRepository;
     @Autowired private InterviewQuestionRepository questionRepository;
@@ -43,6 +46,7 @@ class InteractiveInterviewServiceIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        evaluationRepository.deleteAll();
         messageRepository.deleteAll();
         sessionRepository.deleteAll();
         questionRepository.deleteAll();
@@ -67,7 +71,7 @@ class InteractiveInterviewServiceIntegrationTest {
                 question(user.getId(), resume.getId(), job.getId(), "How would you design a task queue?")
         ));
         when(llmClient.complete(any())).thenReturn(new LlmResponse(
-                "{\"followUp\":true,\"message\":\"请具体说明事务传播行为。\"}",
+                evaluationJson("请具体说明事务传播行为。"),
                 "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-1"
         ));
 
@@ -78,14 +82,40 @@ class InteractiveInterviewServiceIntegrationTest {
         assertThat(followedUp.currentQuestion()).isEqualTo(1);
         assertThat(followedUp.messages()).extracting(InteractiveInterviewService.InterviewMessageResponse::content)
                 .contains("请具体说明事务传播行为。");
+        assertThat(followedUp.evaluations()).hasSize(1);
+        assertThat(followedUp.evaluations().getFirst().overallScore()).isEqualTo(72);
+        assertThat(followedUp.evaluations().getFirst().answerMessageId()).isNotNull();
 
         var advanced = service.answer(user.getId(), created.sessionId(), "支持 REQUIRED 和 REQUIRES_NEW。");
         assertThat(advanced.currentQuestion()).isEqualTo(2);
         assertThat(advanced.messages().getLast().content()).isEqualTo("How would you design a task queue?");
 
-        var finished = service.finish(user.getId(), created.sessionId());
-        assertThat(finished.status()).isEqualTo(InterviewSessionStatus.FINISHED);
-        verify(llmClient, times(1)).complete(any());
+        assertThat(advanced.evaluations()).hasSize(2);
+        when(llmClient.complete(any())).thenThrow(new IllegalStateException("model unavailable"));
+        var degraded = service.answer(user.getId(), created.sessionId(), "使用持久化队列并由工作线程消费。");
+        assertThat(degraded.status()).isEqualTo(InterviewSessionStatus.FINISHED);
+        assertThat(degraded.evaluations()).hasSize(2);
+        assertThat(degraded.messages()).extracting(InteractiveInterviewService.InterviewMessageResponse::content)
+                .contains("使用持久化队列并由工作线程消费。");
+        User intruder = userRepository.save(new User(
+                "intruder-" + UUID.randomUUID() + "@example.com", "hash", "Intruder", UserRole.USER
+        ));
+        assertThatThrownBy(() -> service.get(intruder.getId(), created.sessionId()))
+                .isInstanceOf(BusinessException.class);
+        verify(llmClient, times(3)).complete(any());
+    }
+
+    private String evaluationJson(String followUpQuestion) {
+        return """
+                {"schemaVersion":"1.0","overallScore":72,"dimensions":[
+                  {"key":"accuracy","label":"准确性","score":70,"rationale":"方向正确但缺少传播细节"},
+                  {"key":"relevance","label":"相关性","score":76,"rationale":"围绕问题作答"},
+                  {"key":"depth","label":"深度","score":65,"rationale":"需要具体机制"},
+                  {"key":"communication","label":"表达","score":80,"rationale":"表达简洁"}
+                ],"strengths":["抓住了一致性目标"],"improvements":["补充传播行为和隔离级别"],
+                "improvedAnswer":"事务通过传播行为和隔离级别协调一致性边界。",
+                "followUp":true,"followUpQuestion":"%s"}
+                """.formatted(followUpQuestion);
     }
 
     private InterviewQuestion question(Long userId, Long resumeId, Long jobId, String text) {

@@ -21,8 +21,10 @@ const statusLabel: Record<string, string> = {
   ANALYZING_RESUME: '简历分析', GENERATING_QUESTIONS: '生成面试题', GENERATING_FINAL_REPORT: '汇总最终报告', SUCCESS: '已完成', FAILED: '失败',
   COMPLETE: '完整', PARTIAL: '部分结果', RUNNING: '执行中', IN_PROGRESS: '进行中', FINISHED: '已结束'
   , INTERVIEW_ANSWER_RECEIVED: '已收到回答', INTERVIEW_EVALUATING: '正在分析回答',
+  INTERVIEW_SCORING: '正在生成评分与建议', INTERVIEW_SCORE_COMPLETED: '评分完成',
+  INTERVIEW_SCORE_FAILED: '本次评分暂不可用',
   INTERVIEW_FOLLOWUP_STREAMING: '正在生成追问或反馈', INTERVIEW_FEEDBACK_COMPLETED: '反馈完成',
-  INTERVIEW_NEXT_QUESTION: '进入下一题', INTERVIEW_COMPLETED: '面试完成'
+  INTERVIEW_NEXT_QUESTION: '进入下一题', INTERVIEW_COMPLETED: '面试完成', INTERVIEW_FAILED: '处理失败'
 }
 
 function App() {
@@ -223,11 +225,17 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
           {active.status === 'IN_PROGRESS' && <button className="secondary" onClick={() => void finish()} disabled={busy}><Square size={14} />结束</button>}
         </header>
         <div className="transcript" ref={transcriptRef}>
-          {active.messages.map(message => <div key={message.messageId} className={`message ${message.role.toLowerCase()}`}>
-            <div className="message-role">{message.role === 'INTERVIEWER' ? 'AI 面试官' : '我'}</div>
-            <p>{message.content}</p>
-            <time>{formatDate(message.createdAt)}</time>
-          </div>)}
+          {active.messages.map(message => {
+            const evaluation = active.evaluations.find(item => item.answerMessageId === message.messageId)
+            return <div key={message.messageId} className="interview-turn">
+              <div className={`message ${message.role.toLowerCase()}`}>
+                <div className="message-role">{message.role === 'INTERVIEWER' ? 'AI 面试官' : '我'}</div>
+                <p>{message.content}</p>
+                <time>{formatDate(message.createdAt)}</time>
+              </div>
+              {evaluation && <AnswerScore evaluation={evaluation} />}
+            </div>
+          })}
           {streamText && <div className="message interviewer"><div className="message-role">AI 面试官</div><p>{streamText}</p></div>}
           {busy && <div className="thinking"><span /><span /><span />{interviewState && <small>{statusLabel[interviewState] || interviewState}</small>}</div>}
         </div>
@@ -239,6 +247,21 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
       {error && <div className="alert interview-error"><CircleAlert size={16} />{error}</div>}
     </section>
   </div>
+}
+
+function AnswerScore({ evaluation }: { evaluation: import('./api').InterviewEvaluation }) {
+  const result = evaluation.result
+  return <details className="answer-score">
+    <summary><span>回答评分</span><strong>{evaluation.overallScore}</strong><small>/ 100</small></summary>
+    <div className="score-body">
+      <div className="score-dimensions">{result.dimensions.map(item => <div key={item.key}>
+        <header><strong>{item.label} · {item.weight}%</strong><span>{item.score}</span></header><p>{item.rationale}</p>
+      </div>)}</div>
+      {!!result.strengths.length && <div className="score-notes positive"><strong>做得不错</strong><ul>{result.strengths.map(item => <li key={item}>{item}</li>)}</ul></div>}
+      <div className="score-notes"><strong>可以改进</strong><ul>{result.improvements.map(item => <li key={item}>{item}</li>)}</ul></div>
+      <div className="improved-answer"><strong>参考表达</strong><p>{result.improvedAnswer}</p></div>
+    </div>
+  </details>
 }
 
 function Overview({ tasks, reports, resumes, jobs, onNew, onTask, onReport }: { tasks: CareerTask[]; reports: ReportSummary[]; resumes: Resume[]; jobs: Job[]; onNew: () => void; onTask: (id: number) => void; onReport: (id: number) => void }) {
