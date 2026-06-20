@@ -6,6 +6,7 @@ import com.huatai.careeragent.agent.core.AgentResult;
 import com.huatai.careeragent.agent.schema.SchemaRepairService;
 import com.huatai.careeragent.agent.schema.SchemaRepairService.RepairResult;
 import com.huatai.careeragent.agent.tool.AgentNames;
+import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.llm.LlmClient;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class ResumeAnalysisAgent implements Agent<ResumeAnalysisAgent.Input, ResumeAnalysisReportResponse> {
@@ -42,20 +44,22 @@ public class ResumeAnalysisAgent implements Agent<ResumeAnalysisAgent.Input, Res
     public AgentResult<ResumeAnalysisReportResponse> execute(Input input, AgentContext context) {
         GetResumeTool.Output resume = tools.resume(input.resumeId(), context, name());
         SearchUserKnowledgeBaseTool.Output knowledge = tools.search(resume.title() + " projects skills", context, name());
+        GetJobDescriptionTool.Output job = input.jobId() == null ? null : tools.job(input.jobId(), context, name());
+        Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items());
         List<String> contexts = new ArrayList<>();
-        contexts.add(outputSupport.json(resume));
+        contexts.add(outputSupport.citedJson(outputSupport.resumeCitationId(resume), resume));
         contexts.add(outputSupport.json(knowledge));
-        if (input.jobId() != null) contexts.add(outputSupport.json(tools.job(input.jobId(), context, name())));
+        if (job != null) contexts.add(outputSupport.citedJson(outputSupport.jobCitationId(job), job));
         LlmResponse response = llmClient.complete(LlmRequest.secured(
                 "You are a resume reviewer. Return strict JSON only.",
                 "Analyze the resume. Required keys: summary, highlights, weaknesses, projectIssues, suggestions, "
-                        + "risks, nextActions, citations. Use only supplied citationId values.",
+                        + "risks, nextActions, citations. " + outputSupport.citationInstruction(allowedCitations),
                 contexts, context.traceId(), true
         ));
         RepairResult validated = schemaRepairService.validateOrRepair(
                 "resume_analysis_result.schema.json", response.content(), context.traceId()
         );
-        outputSupport.validateCitations(validated.value(), knowledge.items());
+        outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         ResumeAnalysisReportResponse saved = reportService.saveResumeAnalysis(
                 context.userId(), input.resumeId(), validated.value()
         );

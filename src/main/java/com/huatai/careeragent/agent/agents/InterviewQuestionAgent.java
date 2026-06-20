@@ -17,6 +17,7 @@ import com.huatai.careeragent.llm.LlmResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Input, List<InterviewQuestionResponse>> {
@@ -43,17 +44,23 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
         GetResumeTool.Output resume = tools.resume(input.resumeId(), context, name());
         GetJobDescriptionTool.Output job = tools.job(input.jobId(), context, name());
         SearchUserKnowledgeBaseTool.Output knowledge = tools.search(job.position() + " interview projects", context, name());
+        Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items());
         LlmResponse response = llmClient.complete(LlmRequest.secured(
                 "You generate personalized interview questions. Return strict JSON only.",
                 "Return a questions array. Each item requires question, questionType, difficulty, expectedPoints, "
-                        + "citations and noCitationReason. Use a supplied citationId or explain why no citation applies.",
-                List.of(outputSupport.json(resume), outputSupport.json(job), outputSupport.json(knowledge)),
+                        + "citations and noCitationReason. Use a supplied citationId or explain why no citation applies. "
+                        + outputSupport.citationInstruction(allowedCitations),
+                List.of(
+                        outputSupport.citedJson(outputSupport.resumeCitationId(resume), resume),
+                        outputSupport.citedJson(outputSupport.jobCitationId(job), job),
+                        outputSupport.json(knowledge)
+                ),
                 context.traceId(), true
         ));
         RepairResult validated = schemaRepairService.validateOrRepair(
                 "interview_questions.schema.json", response.content(), context.traceId()
         );
-        outputSupport.validateCitations(validated.value(), knowledge.items());
+        outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         List<InterviewQuestionResponse> saved = questionService.save(
                 context.userId(), input.resumeId(), input.jobId(), context.taskId(), validated.value()
         );

@@ -17,6 +17,7 @@ import com.huatai.careeragent.report.ReportService.JobMatchReportResponse;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class JobMatchAgent implements Agent<JobMatchAgent.Input, JobMatchReportResponse> {
@@ -43,17 +44,23 @@ public class JobMatchAgent implements Agent<JobMatchAgent.Input, JobMatchReportR
         GetResumeTool.Output resume = tools.resume(input.resumeId(), context, name());
         GetJobDescriptionTool.Output job = tools.job(input.jobId(), context, name());
         SearchUserKnowledgeBaseTool.Output knowledge = tools.search(job.position() + " " + job.description(), context, name());
+        Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items());
         LlmResponse response = llmClient.complete(LlmRequest.secured(
                 "You are a career matching analyst. Return strict JSON only.",
                 "Compare the resume with the job. Required keys: matchScore, summary, strengths, weaknesses, "
-                        + "missingSkills, suggestedResumeChanges, citations. Use only supplied citationId values.",
-                List.of(outputSupport.json(resume), outputSupport.json(job), outputSupport.json(knowledge)),
+                        + "missingSkills, suggestedResumeChanges, citations. "
+                        + outputSupport.citationInstruction(allowedCitations),
+                List.of(
+                        outputSupport.citedJson(outputSupport.resumeCitationId(resume), resume),
+                        outputSupport.citedJson(outputSupport.jobCitationId(job), job),
+                        outputSupport.json(knowledge)
+                ),
                 context.traceId(), true
         ));
         RepairResult validated = schemaRepairService.validateOrRepair(
                 "job_match_result.schema.json", response.content(), context.traceId()
         );
-        outputSupport.validateCitations(validated.value(), knowledge.items());
+        outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         JobMatchReportResponse saved = reportService.saveJobMatch(context.userId(), input.resumeId(), input.jobId(), validated.value());
         return AgentResult.success(saved, "jobMatchReportId=" + saved.reportId(),
                 outputSupport.totalUsage(response.usage(), validated));
