@@ -56,5 +56,9 @@ public class FinalReport {
     public String getExportStatus() { return exportStatus; }
     public String getExportPath() { return exportPath; }
     public Instant getCreatedAt() { return createdAt; }
-}
 
+    public void markExported(String path) {
+        this.exportStatus = "EXPORTED";
+        this.exportPath = path;
+    }
+}

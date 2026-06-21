@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
-  Activity, ArrowLeft, BarChart3, BriefcaseBusiness, Check, ChevronRight, CircleAlert, Clock3,
-  FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
+  Activity, ArrowLeft, BarChart3, BookOpen, BriefcaseBusiness, Check, ChevronRight, CircleAlert, Clock3,
+  Download, FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewMemory, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
+import { api, session, type CareerTask, type InterviewMemory, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
@@ -471,17 +471,27 @@ function ReportList({ reports, onSelect }: { reports: ReportSummary[]; onSelect:
 }
 
 function ReportDetailView({ id, onBack }: { id: number; onBack: () => void }) {
-  const [detail, setDetail] = useState<ReportDetail | null>(null); const [error, setError] = useState('')
-  useEffect(() => { api.report(id).then(setDetail).catch(reason => setError(reason instanceof Error ? reason.message : '报告加载失败')) }, [id])
+  const [detail, setDetail] = useState<ReportDetail | null>(null); const [plan, setPlan] = useState<LearningPlan | null>(null)
+  const [error, setError] = useState(''); const [planBusy, setPlanBusy] = useState(false); const [pdfBusy, setPdfBusy] = useState(false)
+  useEffect(() => { api.report(id).then(value => { setDetail(value); if (value.taskId) api.learningPlan(value.taskId).then(setPlan).catch(() => undefined) }).catch(reason => setError(reason instanceof Error ? reason.message : '报告加载失败')) }, [id])
+  async function generatePlan() { if (!detail?.taskId) return; setPlanBusy(true); setError(''); try { setPlan(await api.generateLearningPlan(detail.taskId)) } catch (reason) { setError(reason instanceof Error ? reason.message : '学习计划生成失败') } finally { setPlanBusy(false) } }
+  async function exportPdf() { if (!detail) return; setPdfBusy(true); setError(''); try { const exported = await api.exportReportPdf(detail.reportId); await api.downloadReportPdf(detail.reportId, exported.fileName); setDetail({ ...detail, exportStatus: 'EXPORTED' }) } catch (reason) { setError(reason instanceof Error ? reason.message : 'PDF 导出失败') } finally { setPdfBusy(false) } }
   if (!detail) return <>{error ? <div className="alert"><CircleAlert size={16} />{error}</div> : <div className="loading-line">正在加载报告...</div>}</>
   const report = detail.report as AggregatedReport; const match = report.jobMatch; const analysis = report.resumeAnalysis; const questions = report.interviewQuestions
   return <><button className="back-link" onClick={onBack}><ArrowLeft size={16} />返回报告列表</button>
-    <section className="report-head"><div><Status status={report.status} /><h2>{report.job?.position}</h2><p>{report.job?.company || '未填写公司'} · {report.resume?.title}</p></div><div className="report-version">V{detail.version}<span>{formatDate(detail.createdAt)}</span></div></section>
+    <section className="report-head"><div><Status status={report.status} /><h2>{report.job?.position}</h2><p>{report.job?.company || '未填写公司'} · {report.resume?.title}</p></div><div className="report-actions"><div className="report-version">V{detail.version}<span>{formatDate(detail.createdAt)}</span></div><button className="secondary" onClick={generatePlan} disabled={planBusy || Boolean(plan)}><BookOpen size={15} />{planBusy ? '生成中...' : plan ? '学习计划已生成' : '生成学习计划'}</button><button className="primary" onClick={exportPdf} disabled={pdfBusy}><Download size={15} />{pdfBusy ? '导出中...' : '导出 PDF'}</button></div></section>
+    {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
     <section className="score-band"><div className="score"><strong>{match?.data?.matchScore ?? '--'}</strong><span>岗位匹配分</span></div><div><h3>{match?.data?.summary || match?.reason}</h3><div className="tag-list">{(match?.data?.strengths || []).map((item: string) => <span key={item}>{item}</span>)}</div></div></section>
     <section className="report-columns"><ReportSection title="简历亮点" items={analysis?.data?.highlights} missing={analysis?.reason} tone="positive" /><ReportSection title="优先改进" items={[...(analysis?.data?.suggestions || []), ...(match?.data?.suggestedResumeChanges || [])]} missing={analysis?.reason} tone="attention" /></section>
     <section className="plain-section"><SectionTitle title="面试题" /><div className="question-list">{(questions?.items || []).map((item, index) => <article className="question" key={item.questionId}><div className="question-index">{String(index + 1).padStart(2, '0')}</div><div><div className="question-meta"><span>{item.questionType}</span><span>{item.difficulty}</span></div><h3>{item.question}</h3><ul>{item.expectedPoints?.map((point) => <li key={point}>{point}</li>)}</ul>{item.citations?.length ? <div className="citations">来源：{item.citations.join('、')}</div> : item.noCitationReason && <div className="citations muted">{item.noCitationReason}</div>}</div></article>)}{questions?.status === 'MISSING' && <Empty icon={<CircleAlert />} text={questions.reason || '面试题暂不可用'} />}</div></section>
+    {plan && <LearningPlanPanel value={plan} />}
     <section className="citation-band"><div><FileText size={18} /><strong>引用来源</strong></div><div className="tag-list">{(report.citations || []).map((citation: string) => <code key={citation}>{citation}</code>)}{!report.citations?.length && <span>本报告未使用知识库引用</span>}</div></section>
   </>
+}
+
+function LearningPlanPanel({ value }: { value: LearningPlan }) {
+  const plan = value.plan
+  return <section className="learning-plan"><div className="learning-plan-head"><div><span className="eyebrow">PERSONAL ROADMAP</span><h2>个性化学习计划</h2><p>{plan.summary}</p></div><div><strong>{plan.durationWeeks} 周</strong><span>每周 {plan.weeklyHours} 小时</span></div></div><div className="priority-grid">{plan.priorities.map(item => <article key={`${item.priority}-${item.skill}`}><span>优先级 {item.priority}</span><h3>{item.skill}</h3><p>{item.gap}</p><small>{item.evidence}</small></article>)}</div><div className="plan-phases">{plan.phases.map(phase => <article key={`${phase.weekStart}-${phase.title}`}><div className="phase-week">W{phase.weekStart}–{phase.weekEnd}</div><div><h3>{phase.title}</h3><p>{phase.goals.join(' · ')}</p><ul>{phase.actions.map(action => <li key={action}>{action}</li>)}</ul><small>交付物：{phase.deliverables.join('、')}</small></div></article>)}</div><div className="success-metrics"><strong>验收标准</strong><ul>{plan.successMetrics.map(metric => <li key={metric}>{metric}</li>)}</ul></div></section>
 }
 
 function ReportSection({ title, items = [], missing, tone }: { title: string; items?: string[]; missing?: string; tone: string }) { return <div className={`report-section ${tone}`}><h3>{title}</h3>{missing ? <p>{missing}</p> : <ul>{items.map(item => <li key={item}>{item}</li>)}</ul>}</div> }

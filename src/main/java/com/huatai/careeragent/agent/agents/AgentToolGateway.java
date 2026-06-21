@@ -4,6 +4,7 @@ import com.huatai.careeragent.agent.core.AgentContext;
 import com.huatai.careeragent.agent.core.AgentException;
 import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
+import com.huatai.careeragent.agent.tool.GetFinalReportTool;
 import com.huatai.careeragent.agent.tool.CallMcpTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.agent.tool.ToolExecutionContext;
@@ -47,6 +48,11 @@ public class AgentToolGateway {
     public CallMcpTool.Output mcp(String toolName, Map<String, Object> arguments, AgentContext context, String agentName) {
         return invoke(CallMcpTool.NAME, new CallMcpTool.Input(toolName, arguments), context, agentName,
                 CallMcpTool.Output.class);
+    }
+
+    public GetFinalReportTool.Output finalReport(Long taskId, AgentContext context, String agentName) {
+        return invoke(GetFinalReportTool.NAME, new GetFinalReportTool.Input(taskId), context, agentName,
+                GetFinalReportTool.Output.class);
     }
 
     private <I, O> O invoke(String toolName, I input, AgentContext context, String agentName, Class<O> outputType) {

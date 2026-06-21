@@ -8,6 +8,7 @@ import com.huatai.careeragent.llm.ModelConfig;
 import com.huatai.careeragent.agent.core.AgentProperties;
 import com.huatai.careeragent.mcp.McpProperties;
 import com.huatai.careeragent.agent.handoff.HandoffProperties;
+import com.huatai.careeragent.report.pdf.PdfExportProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -21,7 +22,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 		ModelConfig.class,
 		AgentProperties.class,
 		HandoffProperties.class,
-		McpProperties.class
+		McpProperties.class,
+		PdfExportProperties.class
 })
 public class CareerAgentApplication {
 

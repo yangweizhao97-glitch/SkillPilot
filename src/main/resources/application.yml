@@ -48,6 +48,10 @@ career-agent:
   storage:
     upload-dir: ${UPLOAD_DIR:./data/uploads}
     max-upload-size: ${MAX_UPLOAD_SIZE:20MB}
+  report:
+    pdf:
+      export-dir: ${PDF_EXPORT_DIR:./data/exports}
+      font-path: ${PDF_FONT_PATH:}
   llm:
     provider: ${LLM_PROVIDER:DASHSCOPE}
     dashscope-api-key: ${DASHSCOPE_API_KEY:}

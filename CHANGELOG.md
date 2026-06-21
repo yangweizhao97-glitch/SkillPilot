@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.9 - 2026-06-21
+
+- Added authenticated PDF generation and download for user-owned final reports.
+- Rendered task metadata, job matching, resume analysis, interview questions, citations, and the task-bound learning plan as a paginated A4 report.
+- Added atomic local export storage, configurable CJK font and export paths, persisted export state, and path traversal protection.
+- Added PDF text extraction tests plus rendered-page visual verification for Chinese glyphs, wrapping, section spacing, and page footers.
+
+## 0.2.8 - 2026-06-21
+
+- Added a task-scoped Learning Plan Agent that reads one final report through the audited Tool Registry.
+- Added a strict learning-plan JSON Schema, secured Prompt contract, repair validation, and offline Prompt regression fixture.
+- Persisted one idempotent learning plan per user and career task with cross-user and cross-task isolation.
+- Added report-page generation controls and structured roadmap display for priorities, weekly phases, deliverables, and success metrics.
+
 ## 0.2.7 - 2026-06-21
 
 - Added bounded, persisted interview memory scoped by user, resume, job, and source session.

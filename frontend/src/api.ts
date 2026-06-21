@@ -20,6 +20,15 @@ export type ReportSummary = {
   resumeTitle: string; company?: string; position: string; createdAt: string
 }
 export type ReportDetail = ReportSummary & { report: Record<string, unknown>; exportStatus: string }
+export type LearningPlan = {
+  planId: number; taskId: number; reportId: number; schemaVersion: string; createdAt: string;
+  plan: {
+    summary: string; targetRole: string; durationWeeks: number; weeklyHours: number;
+    priorities: { priority: number; skill: string; gap: string; evidence: string }[];
+    phases: { weekStart: number; weekEnd: number; title: string; goals: string[]; actions: string[]; deliverables: string[] }[];
+    milestones: { week: number; outcome: string; verification: string }[]; successMetrics: string[]
+  }
+}
 export type InterviewMessage = {
   messageId: number; questionId?: number; role: 'INTERVIEWER' | 'CANDIDATE';
   content: string; sequenceNo: number; createdAt: string
@@ -117,6 +126,19 @@ export const api = {
   retryTask: (id: number) => request<CareerTask>(`/api/career-tasks/${id}/retry`, { method: 'POST' }),
   reports: () => request<ReportSummary[]>('/api/reports'),
   report: (id: number) => request<ReportDetail>(`/api/reports/${id}`),
+  learningPlan: (taskId: number) => request<LearningPlan>(`/api/learning-plans?taskId=${taskId}`),
+  generateLearningPlan: (taskId: number) => request<LearningPlan>('/api/learning-plans', {
+    method: 'POST', body: JSON.stringify({ taskId })
+  }),
+  exportReportPdf: (reportId: number) => request<{ fileName: string }>(`/api/reports/${reportId}/pdf`, { method: 'POST' }),
+  downloadReportPdf: async (reportId: number, fileName: string) => {
+    const response = await fetch(`/api/reports/${reportId}/pdf`, {
+      headers: { Authorization: `Bearer ${session.get() || ''}` }
+    })
+    if (!response.ok) throw new Error('PDF 下载失败')
+    const url = URL.createObjectURL(await response.blob()); const anchor = document.createElement('a')
+    anchor.href = url; anchor.download = fileName; anchor.click(); URL.revokeObjectURL(url)
+  },
   interviewSessions: () => request<InterviewSessionSummary[]>('/api/interview/sessions'),
   interviewSession: (id: number) => request<InterviewSession>(`/api/interview/sessions/${id}`),
   createInterviewSession: (resumeId: number, jobId: number) => request<InterviewSession>('/api/interview/sessions', {

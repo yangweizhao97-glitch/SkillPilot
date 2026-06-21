@@ -15,6 +15,9 @@ __pycache__/
 
 data/*.db
 data/uploads/
+data/exports/
+tmp/pdfs/
+output/pdf/
 
 .apt_generated
 .classpath

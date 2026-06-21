@@ -42,6 +42,12 @@ public final class PromptCatalog {
             "基于整场面试记录和逐题评分生成中文复盘。总结必须有证据，行动计划要具体可执行，"
                     + "练习题要针对真实缺口。不要改变服务端给出的总分与维度分。"
     );
+    public static final PromptContract LEARNING_PLAN = new PromptContract(
+            "learning-plan-v1",
+            "你是一位务实的职业学习教练。只返回符合 Schema 的 JSON。",
+            "基于同一职业分析任务的最终报告生成中文学习计划。计划必须针对报告中的真实差距，"
+                    + "包含目标岗位、周期、每周投入、优先能力、分阶段行动、里程碑和成功指标；不要虚构经历。"
+    );
 
     private PromptCatalog() { }
 
@@ -49,7 +55,7 @@ public final class PromptCatalog {
         Map<String, PromptContract> contracts = new LinkedHashMap<>();
         for (PromptContract contract : new PromptContract[]{
                 JOB_MATCH, RESUME_ANALYSIS, INTERVIEW_QUESTIONS, ANSWER_EVALUATION,
-                INTERVIEW_FOLLOW_UP, SESSION_REVIEW
+                INTERVIEW_FOLLOW_UP, SESSION_REVIEW, LEARNING_PLAN
         }) {
             contracts.put(contract.id(), contract);
         }

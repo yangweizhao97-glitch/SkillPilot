@@ -10,9 +10,9 @@ import java.util.Optional;
 public interface FinalReportRepository extends JpaRepository<FinalReport, Long> {
     List<FinalReport> findByUserIdOrderByCreatedAtDescIdDesc(Long userId);
     Optional<FinalReport> findByIdAndUserId(Long id, Long userId);
+    Optional<FinalReport> findFirstByUserIdAndTaskIdOrderByVersionDescIdDesc(Long userId, Long taskId);
 
     @Query("select coalesce(max(r.version), 0) from FinalReport r "
             + "where r.resumeId = :resumeId and r.jobId = :jobId")
     int maxVersion(@Param("resumeId") Long resumeId, @Param("jobId") Long jobId);
 }
-

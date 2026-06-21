@@ -1044,6 +1044,39 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 18 完成
 
+## Phase 20：学习计划 Agent
+
+**Description:** 基于同一个 `taskId` 的最终报告生成可执行、可验证的个性化学习路线，继续沿用 Tool Registry、真实工具事件、Prompt 安全边界和 JSON Schema 校验。
+
+**Acceptance criteria:**
+- [x] Learning Plan Agent 只能通过 `getFinalReport` 获取当前用户、当前任务的最终报告。
+- [x] 学习计划严格绑定 `userId`、`taskId` 和 `reportId`，一个任务幂等生成一份计划。
+- [x] 输出包含目标岗位、周期、每周投入、能力优先级、阶段行动、交付物、里程碑和成功指标。
+- [x] 模型结果通过独立 JSON Schema 校验与修复，不直接保存无效结构。
+- [x] Agent、最终报告工具和 LLM 调用进入现有步骤/工具时间线。
+- [x] 前端报告页按需生成并结构化展示学习计划。
+- [x] Prompt 回归、任务边界和用户隔离测试通过。
+
+**Release target:** `v0.2.8`
+
+**Dependencies:** Phase 19 完成
+
+## Phase 21：PDF 报告导出
+
+**Description:** 将用户拥有的最终报告及同任务学习计划导出为可下载的中文 A4 PDF，并保持鉴权、路径隔离和可验证排版。
+
+**Acceptance criteria:**
+- [x] 只有报告所属用户可以生成和下载 PDF。
+- [x] PDF 包含任务信息、岗位匹配、简历分析、面试题、引用来源和同任务学习计划。
+- [x] 导出采用用户目录隔离、规范化路径校验和原子文件替换。
+- [x] CJK 字体路径和导出目录可配置，导出状态持久化到最终报告。
+- [x] 前端报告页可一键生成并下载 PDF。
+- [x] PDF 文本提取、A4 页面、中文字符、断行、分页、页脚和无重叠目视验收通过。
+
+**Release target:** `v0.2.9`
+
+**Dependencies:** Phase 20 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成
@@ -1112,12 +1145,12 @@ docker compose up -d postgres redis minio
 
 ## 后续迭代任务池
 
-- 学习计划 Agent。
-- PDF 导出。
-- SSE 实时进度和断线重连。
-- 模拟面试、评分和会话总结。
-- 自动评测集与 Prompt 回归测试。
-- MCP 工具接入。
-- 多 Agent handoff。
+- [x] 学习计划 Agent（Phase 20）。
+- [x] PDF 导出（Phase 21）。
+- [x] SSE 实时进度和断线重连。
+- [x] 模拟面试、评分和会话总结。
+- [x] 自动评测集与 Prompt 回归测试。
+- [x] MCP 工具接入。
+- [x] 多 Agent handoff。
 - Elasticsearch / Milvus。
-- 更完整的 Prompt Injection 检测与策略引擎。
+- [x] 更完整的 Prompt Injection 检测与策略引擎。

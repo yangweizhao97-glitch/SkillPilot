@@ -1,6 +1,24 @@
 # CareerAgent API Design
 
-本文定义 CareerAgent 当前 REST API 合同。它覆盖登录、上传简历/JD、解析、切分与检索、Career 任务、岗位匹配、简历分析、面试题生成、报告、日志和文字模拟面试。职业分析结果继续使用结构化 JSON；文字面试回复通过 SSE 推送。回答评分和 PDF 导出留给后续版本。
+本文定义 CareerAgent 当前 REST API 合同。它覆盖登录、上传简历/JD、解析、切分与检索、Career 任务、岗位匹配、简历分析、面试题生成、报告、学习计划、PDF 导出、日志和文字模拟面试。职业分析与学习计划继续使用结构化 JSON；文字面试回复通过 SSE 推送。
+
+## Learning Plans
+
+```http
+GET /api/learning-plans?taskId={taskId}
+POST /api/learning-plans
+```
+
+生成请求只接受 `taskId`。服务端仅使用该任务绑定的最终报告，并为同一用户和任务幂等返回一份经过 Schema 校验的学习计划。
+
+## PDF Reports
+
+```http
+POST /api/reports/{reportId}/pdf
+GET /api/reports/{reportId}/pdf
+```
+
+`POST` 生成或替换导出文件并返回文件元数据；`GET` 以 `application/pdf` 下载。两个接口都按当前用户校验报告归属，不接受客户端文件路径。
 
 ## General Rules
 

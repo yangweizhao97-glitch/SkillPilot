@@ -22,7 +22,8 @@ public class AuditDataSanitizer {
             "password", "passwd", "token", "jwt", "secret", "apikey", "api_key", "authorization"
     );
     private static final Set<String> DOCUMENT_MARKERS = Set.of(
-            "content", "description", "jd_text", "parsed_text", "mcp_content", "structured_content"
+            "content", "description", "jd_text", "parsed_text", "mcp_content", "structured_content",
+            "report", "report_json"
     );
     private static final Pattern BEARER = Pattern.compile("(?i)bearer\\s+[a-z0-9._~-]+");
     private static final Pattern JWT = Pattern.compile("eyJ[a-zA-Z0-9_-]+\\.eyJ[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+");
