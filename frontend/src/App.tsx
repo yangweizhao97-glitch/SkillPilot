@@ -4,7 +4,7 @@ import {
   FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
+import { api, session, type CareerTask, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
@@ -145,6 +145,8 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   const [error, setError] = useState('')
   const [interviewState, setInterviewState] = useState('')
   const [streamText, setStreamText] = useState('')
+  const [review, setReview] = useState<InterviewReview | null>(null)
+  const [reviewBusy, setReviewBusy] = useState(false)
   const transcriptRef = useRef<HTMLDivElement>(null)
 
   const loadSessions = useCallback(async () => {
@@ -156,8 +158,13 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [active?.messages, streamText])
 
   async function openSession(id: number) {
-    setBusy(true); setError('')
-    try { setActive(await api.interviewSession(id)) }
+    setBusy(true); setError(''); setReview(null)
+    try {
+      const next = await api.interviewSession(id); setActive(next)
+      if (next.status === 'FINISHED') {
+        const state = await api.interviewReview(id); setReview(state.review || null)
+      }
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : '会话加载失败') }
     finally { setBusy(false) }
   }
@@ -165,7 +172,7 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   async function createSession() {
     if (!resumeId || !jobId) return
     setBusy(true); setError('')
-    try { const next = await api.createInterviewSession(resumeId, jobId); setActive(next); await loadSessions() }
+    try { const next = await api.createInterviewSession(resumeId, jobId); setActive(next); setReview(null); await loadSessions() }
     catch (reason) { setError(reason instanceof Error ? reason.message : '面试创建失败') }
     finally { setBusy(false) }
   }
@@ -190,6 +197,9 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
         const next = data.session as InterviewSession | undefined
         if (next) { setActive(next); setStreamText('') }
       })
+      const completed = await api.interviewSession(active.sessionId)
+      setActive(completed)
+      if (completed.status === 'FINISHED') await generateReview(completed.sessionId)
       await loadSessions()
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : '回答发送失败') }
@@ -199,9 +209,20 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   async function finish() {
     if (!active) return
     setBusy(true); setError('')
-    try { setActive(await api.finishInterview(active.sessionId)); await loadSessions() }
+    try {
+      const finished = await api.finishInterview(active.sessionId); setActive(finished)
+      if (finished.evaluations.length) await generateReview(finished.sessionId)
+      await loadSessions()
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : '结束面试失败') }
     finally { setBusy(false) }
+  }
+
+  async function generateReview(sessionId: number) {
+    setReviewBusy(true)
+    try { setReview(await api.generateInterviewReview(sessionId)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '复盘报告生成失败') }
+    finally { setReviewBusy(false) }
   }
 
   const resumeName = (id: number) => resumes.find(item => item.resumeId === id)?.title || `简历 #${id}`
@@ -246,6 +267,9 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
           })}
           {streamText && <div className="message interviewer"><div className="message-role">AI 面试官</div><p>{streamText}</p></div>}
           {busy && <div className="thinking"><span /><span /><span />{interviewState && <small>{statusLabel[interviewState] || interviewState}</small>}</div>}
+          {active.status === 'FINISHED' && (review
+            ? <InterviewReviewCard review={review} />
+            : <div className="review-empty"><strong>本轮面试已结束</strong><span>{reviewBusy ? '正在生成复盘报告…' : '生成会话级总结、能力缺口与改进计划'}</span><button className="secondary" disabled={reviewBusy || !active.evaluations.length} onClick={() => void generateReview(active.sessionId)}>{reviewBusy ? '生成中' : '生成复盘报告'}</button></div>)}
         </div>
         <form className="answer-box" onSubmit={submitAnswer}>
           <textarea value={answer} onChange={event => setAnswer(event.target.value)} placeholder={active.status === 'FINISHED' ? '本轮面试已结束' : '输入你的回答'} disabled={active.status === 'FINISHED' || busy} maxLength={10000} />
@@ -255,6 +279,20 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
       {error && <div className="alert interview-error"><CircleAlert size={16} />{error}</div>}
     </section>
   </div>
+}
+
+function InterviewReviewCard({ review }: { review: InterviewReview }) {
+  return <section className="interview-review">
+    <header><div><span>面试复盘</span><strong>{review.overallScore}</strong><small>/ 100</small></div><p>{review.result.summary}</p></header>
+    <div className="review-dimensions">{review.result.dimensions.map(item => <div key={item.key}><strong>{item.label}</strong><b>{item.score}</b><p>{item.assessment}</p></div>)}</div>
+    <div className="review-columns">
+      <div><strong>表现优势</strong><ul>{review.result.strengths.map(item => <li key={item}>{item}</li>)}</ul></div>
+      <div><strong>主要缺口</strong><ul>{review.result.gaps.map(item => <li key={item}>{item}</li>)}</ul></div>
+    </div>
+    <div className="review-actions"><strong>下一步行动</strong>{[...review.result.actionPlan].sort((a, b) => a.priority - b.priority).map(item => <div key={`${item.priority}-${item.action}`}><b>{item.priority}</b><p><strong>{item.action}</strong><span>{item.reason}</span></p></div>)}</div>
+    <div className="review-practice"><strong>建议练习题</strong><ol>{review.result.recommendedPracticeQuestions.map(item => <li key={item}>{item}</li>)}</ol></div>
+    {review.generationSource === 'FALLBACK' && <small className="review-source">模型暂不可用，本报告由已校验的逐题评分自动汇总。</small>}
+  </section>
 }
 
 function AnswerScore({ evaluation }: { evaluation: import('./api').InterviewEvaluation }) {

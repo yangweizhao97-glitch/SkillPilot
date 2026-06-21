@@ -24,10 +24,13 @@ import java.util.List;
 public class InteractiveInterviewController {
     private final InteractiveInterviewService service;
     private final InterviewStreamService streamService;
+    private final InterviewReviewService reviewService;
 
-    public InteractiveInterviewController(InteractiveInterviewService service, InterviewStreamService streamService) {
+    public InteractiveInterviewController(InteractiveInterviewService service, InterviewStreamService streamService,
+                                          InterviewReviewService reviewService) {
         this.service = service;
         this.streamService = streamService;
+        this.reviewService = reviewService;
     }
 
     @PostMapping
@@ -61,6 +64,18 @@ public class InteractiveInterviewController {
     @PostMapping("/{sessionId}/finish")
     public ApiResponse<InterviewSessionResponse> finish(CurrentUser currentUser, @PathVariable Long sessionId) {
         return ApiResponse.ok(service.finish(currentUser.userId(), sessionId));
+    }
+
+    @GetMapping("/{sessionId}/review")
+    public ApiResponse<InterviewReviewService.ReviewState> review(CurrentUser currentUser,
+                                                                  @PathVariable Long sessionId) {
+        return ApiResponse.ok(reviewService.get(currentUser.userId(), sessionId));
+    }
+
+    @PostMapping("/{sessionId}/review")
+    public ApiResponse<InterviewReviewService.ReviewResponse> generateReview(CurrentUser currentUser,
+                                                                             @PathVariable Long sessionId) {
+        return ApiResponse.ok(reviewService.generate(currentUser.userId(), sessionId));
     }
 
     public record CreateSessionRequest(@NotNull Long resumeId, @NotNull Long jobId) { }

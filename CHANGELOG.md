@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 - 2026-06-21
+
+- Added one persisted, user-isolated review per completed interview session.
+- Aggregated only evaluations and transcript messages bound to the same `sessionId`.
+- Added Schema-validated overall summaries, canonical server-side scores, strengths, gaps, action plans, and practice questions.
+- Added idempotent review generation with a deterministic fallback when the model is unavailable.
+- Added automatic and on-demand review generation plus a historical-session review panel in the frontend.
+- Replaced post-hoc interview text slicing with provider-level LLM streaming and immediate candidate-message rendering.
+
 ## 0.2.1 - 2026-06-21
 
 - Added authenticated career-task SSE with database-backed initial synchronization.
@@ -7,8 +16,6 @@
 - Added reconnect support through `Last-Event-ID`, full snapshot reconciliation, and frontend deduplication.
 - Replaced task-detail polling with a recoverable authenticated fetch stream and bounded exponential reconnect.
 - Added SSE lifecycle, reconnect metadata, user-isolation, and client parser regression tests.
-- Replaced post-hoc interview text slicing with provider-level LLM streaming while keeping scoring JSON Schema-validated.
-- Added optimistic candidate messages so submitted answers appear in the transcript immediately.
 
 ## 0.2.0 - 2026-06-21
 

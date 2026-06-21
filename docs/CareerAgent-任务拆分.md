@@ -944,6 +944,22 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 12 完成
 
+## Phase 14：模拟面试会话总结与复盘报告
+
+**Description:** 在逐题评分和真实自然语言流式输出稳定后，为已结束的模拟面试生成会话级复盘，给出可信的能力总结和可执行改进计划。
+
+**Acceptance criteria:**
+- [x] 每份复盘绑定唯一 `sessionId` 和 `userId`，只聚合同一会话的对话与逐题评分。
+- [x] 复盘包含总分、四项维度、优势、主要缺口、行动计划和针对性练习题。
+- [x] 模型结果通过 JSON Schema 校验，分数由后端基于逐题评分重新计算并覆盖模型值。
+- [x] 同一会话重复请求幂等，模型异常时使用已校验评分生成降级复盘。
+- [x] 面试结束后前端自动生成并展示，历史会话可读取已持久化复盘。
+- [x] 增加数据库迁移、用户隔离、幂等、Schema 和前端构建验证。
+
+**Release target:** `v0.2.2`
+
+**Dependencies:** Phase 13 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

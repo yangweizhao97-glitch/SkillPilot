@@ -24,7 +24,8 @@ public class JsonSchemaValidator {
             "resume_analysis_result.schema.json",
             "interview_questions.schema.json",
             "interview_turn.schema.json",
-            "interview_answer_evaluation.schema.json"
+            "interview_answer_evaluation.schema.json",
+            "interview_session_review.schema.json"
     );
 
     private final ObjectMapper objectMapper;
