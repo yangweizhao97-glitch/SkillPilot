@@ -4,7 +4,9 @@
 
 - Removed fictitious disabled workflow transitions so career-task events reflect only agents that actually ran.
 - Hardened task isolation, learning-plan completeness checks, generation claims, and schema-repair tool visibility.
+- Added recoverable learning-plan generation leases with row-level locking and stale-claim takeover.
 - Moved interview model calls outside database transactions and added guarded, recoverable answer processing.
+- Limited PDF aggregation to completed learning plans and made interview stream failures persist in the client.
 - Enforced runtime JWT secrets, content-based upload type detection, rollback file cleanup, and safer PDF exports.
 - Switched career-task SSE workers to virtual threads and fixed delayed browser download URL cleanup.
 

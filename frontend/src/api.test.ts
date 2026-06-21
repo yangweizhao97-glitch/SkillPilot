@@ -52,4 +52,19 @@ describe('API client', () => {
     expect(headers.Authorization).toBe('Bearer stream-token')
     expect(headers['Last-Event-ID']).toBe('step-previous')
   })
+
+  it('rejects an interview stream when the server emits a failure event', async () => {
+    const body = [
+      'event:INTERVIEW_ANSWER_RECEIVED', 'data:{"message":"回答已接收"}', '',
+      'event:INTERVIEW_FAILED', 'data:{"message":"面试回答处理失败，请重试"}', '', '',
+    ].join('\n')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    const events: string[] = []
+
+    await expect(api.streamInterviewAnswer(7, 'answer', event => events.push(event)))
+      .rejects.toThrow('面试回答处理失败，请重试')
+    expect(events).toEqual(['INTERVIEW_ANSWER_RECEIVED', 'INTERVIEW_FAILED'])
+  })
 })

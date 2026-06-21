@@ -205,7 +205,10 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
       if (completed.status === 'FINISHED') await generateReview(completed.sessionId)
       await loadSessions()
     }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '回答发送失败') }
+    catch (reason) {
+      setError(reason instanceof Error ? reason.message : '回答发送失败')
+      try { setActive(await api.interviewSession(active.sessionId)) } catch { /* Keep the actionable stream error. */ }
+    }
     finally { setBusy(false); setInterviewState('') }
   }
 

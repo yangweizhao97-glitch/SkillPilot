@@ -48,7 +48,7 @@ public class InterviewStreamService {
                 if (!closed.get()) emitter.complete();
             } catch (Exception exception) {
                 try {
-                    send(emitter, closed, "INTERVIEW_FAILED", new Status("面试回答处理失败"));
+                    send(emitter, closed, "INTERVIEW_FAILED", new Status("面试回答处理失败，请重试"));
                     if (!closed.get()) emitter.complete();
                 } catch (Exception sendFailure) {
                     if (!closed.get()) emitter.completeWithError(sendFailure);

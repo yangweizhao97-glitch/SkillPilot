@@ -27,6 +27,7 @@ public class LearningPlan {
     @Column(name = "schema_version", nullable = false, length = 32) private String schemaVersion;
     @Column(name = "generation_status", nullable = false, length = 32) private String generationStatus;
     @Column(name = "generation_id", length = 64) private String generationId;
+    @Column(name = "generation_started_at") private Instant generationStartedAt;
     @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     @UpdateTimestamp @Column(name = "updated_at", nullable = false) private Instant updatedAt;
 
@@ -45,13 +46,15 @@ public class LearningPlan {
         LearningPlan plan = new LearningPlan();
         plan.userId = userId; plan.taskId = taskId; plan.reportId = reportId;
         plan.resultJson = Map.of(); plan.schemaVersion = "1.0"; plan.generationStatus = "GENERATING";
-        plan.generationId = generationId;
+        plan.generationId = generationId; plan.generationStartedAt = Instant.now();
         return plan;
     }
 
-    public void restart(Long reportId, String generationId) { this.reportId = reportId; this.resultJson = Map.of(); this.generationStatus = "GENERATING"; this.generationId = generationId; }
-    public void complete(Map<String, Object> result) { this.resultJson = Map.copyOf(result); this.generationStatus = "READY"; this.generationId = null; }
-    public void fail() { this.generationStatus = "FAILED"; this.generationId = null; }
+    public void restart(Long reportId, String generationId) { this.reportId = reportId; this.resultJson = Map.of(); this.generationStatus = "GENERATING"; this.generationId = generationId; this.generationStartedAt = Instant.now(); }
+    public boolean generationIsStale(Instant threshold) { return "GENERATING".equals(generationStatus) && (generationStartedAt == null || generationStartedAt.isBefore(threshold)); }
+    public void complete(Map<String, Object> result) { this.resultJson = Map.copyOf(result); this.generationStatus = "READY"; clearGenerationClaim(); }
+    public void fail() { this.generationStatus = "FAILED"; clearGenerationClaim(); }
+    private void clearGenerationClaim() { this.generationId = null; this.generationStartedAt = null; }
 
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
@@ -63,4 +66,5 @@ public class LearningPlan {
     public Instant getUpdatedAt() { return updatedAt; }
     public String getGenerationStatus() { return generationStatus; }
     public String getGenerationId() { return generationId; }
+    public Instant getGenerationStartedAt() { return generationStartedAt; }
 }

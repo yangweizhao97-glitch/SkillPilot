@@ -36,8 +36,9 @@ public class PdfExportService {
     public PdfExportResponse export(Long userId, Long reportId) {
         FinalReport report = requireReport(userId, reportId);
         byte[] bytes = renderer.render(report,
-                learningPlanRepository.findByUserIdAndTaskId(userId, report.getTaskId()));
-        String fileName = "career-report-" + report.getId() + "-v" + report.getVersion() + ".pdf";
+                learningPlanRepository.findByUserIdAndTaskIdAndGenerationStatus(
+                        userId, report.getTaskId(), "READY"));
+        String fileName = friendlyFileName(report);
         String storageName = "career-report-" + report.getId() + "-" + UUID.randomUUID() + ".pdf";
         String previousPath = report.getExportPath();
         Path root = exportRoot();
@@ -86,7 +87,7 @@ public class PdfExportService {
             throw new BusinessException("PDF_NOT_FOUND", "PDF report file not found", HttpStatus.NOT_FOUND);
         }
         try {
-            return new PdfDownload(path.getFileName().toString(), Files.readAllBytes(path));
+            return new PdfDownload(friendlyFileName(report), Files.readAllBytes(path));
         } catch (IOException exception) {
             throw new BusinessException("PDF_READ_FAILED", "Could not read PDF report", HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -98,6 +99,10 @@ public class PdfExportService {
     }
 
     private Path exportRoot() { return Path.of(properties.getExportDir()).toAbsolutePath().normalize(); }
+
+    private String friendlyFileName(FinalReport report) {
+        return "career-report-" + report.getId() + "-v" + report.getVersion() + ".pdf";
+    }
 
     private void deleteIfDifferent(Path root, String previousPath, Path current) {
         if (previousPath == null) return;

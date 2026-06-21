@@ -165,7 +165,13 @@ export const api = {
           if (line.startsWith('event:')) event = line.slice(6).trim()
           if (line.startsWith('data:')) data += line.slice(5).trim()
         }
-        if (data) onEvent(event, JSON.parse(data) as Record<string, unknown>)
+        if (data) {
+          const parsed = JSON.parse(data) as Record<string, unknown>
+          onEvent(event, parsed)
+          if (event === 'INTERVIEW_FAILED') {
+            throw new Error(String(parsed.message || '面试回答处理失败，请重试'))
+          }
+        }
       }
     }
   },
