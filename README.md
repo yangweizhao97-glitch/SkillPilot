@@ -54,6 +54,14 @@ cd frontend && npm ci && npm run check
 
 Backend integration tests use PostgreSQL and Redis but mock external LLM calls. No real model key is required for tests.
 
+Run the offline Prompt regression gate independently:
+
+```bash
+JAVA_HOME=/path/to/jdk ./mvnw -Dtest=PromptRegressionSuiteTest test
+```
+
+The readable result is written to `target/prompt-regression-report.json`.
+
 ## LangGraph Workflow Engine
 
 Spring remains the default stable workflow engine. To run the optional LangGraph orchestrator:

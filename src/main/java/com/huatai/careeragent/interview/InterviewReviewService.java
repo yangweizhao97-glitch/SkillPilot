@@ -8,6 +8,7 @@ import com.huatai.careeragent.agent.schema.SchemaRepairService;
 import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
+import com.huatai.careeragent.llm.PromptCatalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -104,9 +105,8 @@ public class InterviewReviewService {
             String traceId = "interview_review_" + sessionId + "_"
                     + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.complete(LlmRequest.secured(
-                    "你是一位严谨、务实的技术面试教练。只返回符合 Schema 的 JSON。",
-                    "基于整场面试记录和逐题评分生成中文复盘。总结必须有证据，行动计划要具体可执行，"
-                            + "练习题要针对真实缺口。不要改变服务端给出的总分与维度分。",
+                    PromptCatalog.SESSION_REVIEW.systemPrompt(),
+                    PromptCatalog.SESSION_REVIEW.instruction(),
                     List.of(context), traceId, true
             ));
             JsonNode validated = schemaRepairService.validateOrRepair(

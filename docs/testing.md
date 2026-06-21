@@ -11,6 +11,7 @@
 7. Answer-evaluation tests cover score bounds, fixed weighted dimensions, message-level binding, user isolation, persistence, and SSE completion events.
 8. Workflow-engine contract tests cover Spring delegation, task/trace propagation, invalid LangGraph plans, and configurable fallback.
 9. Career-task SSE tests cover authenticated snapshots, persisted step events, reconnect cursors, terminal completion, user isolation, and frontend event-ID parsing.
+10. The offline Prompt regression suite locks core Prompt contracts and evaluates Schema compliance, factual anchors, score ranges, citation allowlists, dimension completeness, and prompt-injection isolation.
 
 External model calls must always be mocked in automated tests. PostgreSQL with pgvector is a real test dependency.
 
@@ -28,8 +29,11 @@ Run focused suites while developing:
 
 ```bash
 JAVA_HOME=/path/to/jdk ./mvnw -Dtest=CareerWorkflowIntegrationTest test
+JAVA_HOME=/path/to/jdk ./mvnw -Dtest=PromptRegressionSuiteTest test
 cd frontend && npm run test
 ```
+
+Prompt regression cases live in `src/test/resources/evals/prompt-regression-cases.json`. Intentional Prompt changes must update the matching fixture fingerprint and quality expectations in the same review. The suite writes `target/prompt-regression-report.json`, which CI uploads as an artifact even when the gate fails.
 
 ## CI Contract
 

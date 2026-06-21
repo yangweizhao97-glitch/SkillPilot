@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 - 2026-06-21
+
+- Centralized six production Prompt contracts with explicit versioned identifiers.
+- Added an offline evaluation dataset for job matching, resume analysis, interview questions, answer scoring, follow-up generation, and session reviews.
+- Added regression gates for Prompt fingerprints, JSON Schema compliance, factual anchors, score ranges, citation allowlists, dimension completeness, and prompt-injection isolation.
+- Added a machine-readable Prompt regression report and GitHub Actions artifact upload.
+- Documented the dedicated local quality-gate command and intentional Prompt update workflow.
+
 ## 0.2.2 - 2026-06-21
 
 - Added one persisted, user-isolated review per completed interview session.

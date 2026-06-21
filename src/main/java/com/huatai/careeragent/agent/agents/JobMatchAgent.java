@@ -11,6 +11,7 @@ import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
+import com.huatai.careeragent.llm.PromptCatalog;
 import com.huatai.careeragent.report.ReportService;
 import com.huatai.careeragent.report.ReportService.JobMatchReportResponse;
 import org.springframework.stereotype.Component;
@@ -45,9 +46,8 @@ public class JobMatchAgent implements Agent<JobMatchAgent.Input, JobMatchReportR
         SearchUserKnowledgeBaseTool.Output knowledge = tools.search(job.position() + " " + job.description(), context, name());
         Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items());
         LlmResponse response = llmClient.complete(LlmRequest.secured(
-                "You are a career matching analyst. Return strict JSON only.",
-                "Compare the resume with the job. Required keys: matchScore, summary, strengths, weaknesses, "
-                        + "missingSkills, suggestedResumeChanges, citations. "
+                PromptCatalog.JOB_MATCH.systemPrompt(),
+                PromptCatalog.JOB_MATCH.instruction() + " "
                         + outputSupport.citationInstruction(allowedCitations),
                 List.of(
                         outputSupport.citedJson(outputSupport.resumeCitationId(resume), resume),

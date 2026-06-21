@@ -11,6 +11,7 @@ import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
+import com.huatai.careeragent.llm.PromptCatalog;
 import com.huatai.careeragent.report.ReportService;
 import com.huatai.careeragent.report.ReportService.ResumeAnalysisReportResponse;
 import org.springframework.stereotype.Component;
@@ -50,9 +51,9 @@ public class ResumeAnalysisAgent implements Agent<ResumeAnalysisAgent.Input, Res
         contexts.add(outputSupport.json(knowledge));
         if (job != null) contexts.add(outputSupport.citedJson(outputSupport.jobCitationId(job), job));
         LlmResponse response = llmClient.complete(LlmRequest.secured(
-                "You are a resume reviewer. Return strict JSON only.",
-                "Analyze the resume. Required keys: summary, highlights, weaknesses, projectIssues, suggestions, "
-                        + "risks, nextActions, citations. " + outputSupport.citationInstruction(allowedCitations),
+                PromptCatalog.RESUME_ANALYSIS.systemPrompt(),
+                PromptCatalog.RESUME_ANALYSIS.instruction() + " "
+                        + outputSupport.citationInstruction(allowedCitations),
                 contexts, context.traceId(), true
         ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(

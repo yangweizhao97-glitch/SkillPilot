@@ -960,6 +960,22 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 13 完成
 
+## Phase 15：自动评测集与 Prompt 回归测试
+
+**Description:** 将核心 Prompt 和结构化输出纳入离线质量门禁，确保模型、Prompt 或编排调整不会破坏数据合同、引用边界和安全约束。
+
+**Acceptance criteria:**
+- [x] 为生产 Prompt 建立带版本标识的统一合同目录和稳定指纹。
+- [x] 评测集覆盖岗位匹配、简历分析、面试题、逐题评分、自然语言追问和会话复盘。
+- [x] 自动检查 Schema、关键事实、分数范围、维度完整性、引用白名单和提示注入回显。
+- [x] 新增 Prompt 时必须同步增加评测用例，Prompt 漂移必须显式更新指纹。
+- [x] 本地可单独运行评测门禁，并输出机器可读 JSON 报告。
+- [x] CI 全量执行评测并始终上传评测报告 artifact。
+
+**Release target:** `v0.2.3`
+
+**Dependencies:** Phase 14 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

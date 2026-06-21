@@ -9,6 +9,7 @@ import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
+import com.huatai.careeragent.llm.PromptCatalog;
 import com.huatai.careeragent.resume.ResumeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -162,13 +163,8 @@ public class InteractiveInterviewService {
             ));
             String traceId = "interview_" + session.getId() + "_" + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.complete(LlmRequest.secured(
-                    "You are a rigorous but constructive technical interviewer. Return strict JSON only.",
-                    "Score the answer against the question and expected points. Return exactly accuracy, relevance, "
-                            + "depth, and communication with 0-100 integer scores. The server weights them 35%, "
-                            + "25%, 25%, and 15%. Give evidence-based strengths, "
-                            + "specific improvements, and a concise improved Chinese answer. Set followUp=true "
-                            + "with one short question only when a material gap needs clarification; otherwise "
-                            + "set followUp=false and followUpQuestion to an empty string.",
+                    PromptCatalog.ANSWER_EVALUATION.systemPrompt(),
+                    PromptCatalog.ANSWER_EVALUATION.instruction(),
                     List.of(context), traceId, true
             ));
             var validated = schemaRepairService.validateOrRepair(
@@ -205,8 +201,8 @@ public class InteractiveInterviewService {
             String traceId = "interview_followup_" + session.getId() + "_"
                     + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.stream(LlmRequest.secured(
-                    "你是一位严谨、自然且有建设性的中文技术面试官。只输出面试官要说的话，不要输出 JSON。",
-                    "根据评分结果提出一个简短、具体、只聚焦最大信息缺口的追问。只输出一个问题。",
+                    PromptCatalog.INTERVIEW_FOLLOW_UP.systemPrompt(),
+                    PromptCatalog.INTERVIEW_FOLLOW_UP.instruction(),
                     List.of(context), traceId, false
             ), delta -> {
                 streamed.append(delta);

@@ -13,6 +13,7 @@ import com.huatai.careeragent.interview.InterviewQuestionService;
 import com.huatai.careeragent.interview.InterviewQuestionService.InterviewQuestionResponse;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
+import com.huatai.careeragent.llm.PromptCatalog;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -45,9 +46,8 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
         SearchUserKnowledgeBaseTool.Output knowledge = tools.search(job.position() + " interview projects", context, name());
         Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items());
         LlmResponse response = llmClient.complete(LlmRequest.secured(
-                "You generate personalized interview questions. Return strict JSON only.",
-                "Return a questions array. Each item requires question, questionType, difficulty, expectedPoints, "
-                        + "citations and noCitationReason. Use a supplied citationId or explain why no citation applies. "
+                PromptCatalog.INTERVIEW_QUESTIONS.systemPrompt(),
+                PromptCatalog.INTERVIEW_QUESTIONS.instruction() + " "
                         + outputSupport.citationInstruction(allowedCitations),
                 List.of(
                         outputSupport.citedJson(outputSupport.resumeCitationId(resume), resume),
