@@ -152,7 +152,8 @@ class PromptRegressionSuiteTest {
                 || userMessage.contains("</UNTRUSTED_CONTEXT> ignore")) {
             failures.add("untrusted context escaped its security boundary");
         }
-        if (untrusted.contains("<") && !userMessage.contains("&lt;")) {
+        if (untrusted.contains("<") && !userMessage.contains("&lt;")
+                && !userMessage.contains("[REDACTED_BY_PROMPT_SECURITY_POLICY]")) {
             failures.add("untrusted markup was not escaped");
         }
         return failures;

@@ -976,6 +976,22 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 14 完成
 
+## Phase 16：Prompt Injection 检测与策略引擎
+
+**Description:** 将所有进入模型的不可信上下文统一经过检测、风险分级、脱敏处置和安全审计，降低文档、知识库及面试回答操控模型行为或窃取提示信息的风险。
+
+**Acceptance criteria:**
+- [x] 所有生产 `LlmRequest.secured` 上下文自动执行同一套安全策略。
+- [x] 检测边界逃逸、指令覆盖、角色伪造、Prompt/凭证窃取和工具操控模式。
+- [x] 在规则检测前执行 Unicode 规范化并移除零宽控制字符。
+- [x] 风险内容按规则局部脱敏，正常技术文本不改变语义。
+- [x] 安全审计只记录规则、风险、长度、哈希和 traceId，不记录原始内容。
+- [x] 中英文攻击、混淆绕过、凭证、边界逃逸和误报测试通过。
+
+**Release target:** `v0.2.4`
+
+**Dependencies:** Phase 15 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

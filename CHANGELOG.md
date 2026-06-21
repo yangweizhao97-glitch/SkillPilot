@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 - 2026-06-21
+
+- Added a centralized Prompt Injection policy engine for every secured LLM context.
+- Added Unicode normalization and zero-width control removal before security evaluation.
+- Added risk-scored detection and sanitization for boundary escape, instruction override, role spoofing, Prompt exfiltration, tool manipulation, and common credential formats.
+- Added structured security audit events containing only rule identifiers, risk, length, trace ID, and a content hash.
+- Added bilingual attack, obfuscation, secret-redaction, boundary, and benign-content regression coverage.
+
 ## 0.2.3 - 2026-06-21
 
 - Centralized six production Prompt contracts with explicit versioned identifiers.

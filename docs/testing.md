@@ -12,6 +12,7 @@
 8. Workflow-engine contract tests cover Spring delegation, task/trace propagation, invalid LangGraph plans, and configurable fallback.
 9. Career-task SSE tests cover authenticated snapshots, persisted step events, reconnect cursors, terminal completion, user isolation, and frontend event-ID parsing.
 10. The offline Prompt regression suite locks core Prompt contracts and evaluates Schema compliance, factual anchors, score ranges, citation allowlists, dimension completeness, and prompt-injection isolation.
+11. Prompt security policy tests cover bilingual instruction overrides, zero-width Unicode bypasses, boundary escape, role spoofing, exfiltration, credential redaction, and benign technical text.
 
 External model calls must always be mocked in automated tests. PostgreSQL with pgvector is a real test dependency.
 
