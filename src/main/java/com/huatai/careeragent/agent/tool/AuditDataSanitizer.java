@@ -21,7 +21,9 @@ public class AuditDataSanitizer {
     private static final Set<String> SENSITIVE_MARKERS = Set.of(
             "password", "passwd", "token", "jwt", "secret", "apikey", "api_key", "authorization"
     );
-    private static final Set<String> DOCUMENT_MARKERS = Set.of("content", "description", "jd_text", "parsed_text");
+    private static final Set<String> DOCUMENT_MARKERS = Set.of(
+            "content", "description", "jd_text", "parsed_text", "mcp_content", "structured_content"
+    );
     private static final Pattern BEARER = Pattern.compile("(?i)bearer\\s+[a-z0-9._~-]+");
     private static final Pattern JWT = Pattern.compile("eyJ[a-zA-Z0-9_-]+\\.eyJ[a-zA-Z0-9_-]+\\.[a-zA-Z0-9_-]+");
     private static final Pattern API_KEY = Pattern.compile("(?i)sk-[a-z0-9_-]{12,}");
@@ -49,8 +51,9 @@ public class AuditDataSanitizer {
             objectNode.properties().forEach(entry -> {
                 if (isSensitive(entry.getKey())) {
                     objectNode.put(entry.getKey(), "***");
-                } else if (isDocumentContent(entry.getKey()) && entry.getValue().isTextual()) {
-                    objectNode.put(entry.getKey(), summarize(entry.getValue().asText()));
+                } else if (isDocumentContent(entry.getKey())) {
+                    String value = entry.getValue().isTextual() ? entry.getValue().asText() : entry.getValue().toString();
+                    objectNode.put(entry.getKey(), summarize(value));
                 } else if (entry.getValue().isTextual()) {
                     objectNode.put(entry.getKey(), redactSecrets(entry.getValue().asText()));
                 } else {
@@ -75,7 +78,10 @@ public class AuditDataSanitizer {
     }
 
     private boolean isDocumentContent(String key) {
-        return DOCUMENT_MARKERS.contains(key.toLowerCase(Locale.ROOT).replace("-", "_"));
+        String normalized = key.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
+        return DOCUMENT_MARKERS.stream()
+                .map(marker -> marker.replace("_", ""))
+                .anyMatch(normalized::equals);
     }
 
     private String summarize(String value) {

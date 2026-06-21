@@ -4,6 +4,7 @@ import com.huatai.careeragent.agent.core.AgentContext;
 import com.huatai.careeragent.agent.core.AgentException;
 import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
+import com.huatai.careeragent.agent.tool.CallMcpTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.agent.tool.ToolExecutionContext;
 import com.huatai.careeragent.agent.tool.ToolExecutor;
@@ -14,6 +15,7 @@ import com.huatai.careeragent.knowledge.retrieval.RetrievalMode;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class AgentToolGateway {
@@ -40,6 +42,11 @@ public class AgentToolGateway {
                         8, RetrievalMode.HYBRID),
                 context, agentName, SearchUserKnowledgeBaseTool.Output.class
         );
+    }
+
+    public CallMcpTool.Output mcp(String toolName, Map<String, Object> arguments, AgentContext context, String agentName) {
+        return invoke(CallMcpTool.NAME, new CallMcpTool.Input(toolName, arguments), context, agentName,
+                CallMcpTool.Output.class);
     }
 
     private <I, O> O invoke(String toolName, I input, AgentContext context, String agentName, Class<O> outputType) {

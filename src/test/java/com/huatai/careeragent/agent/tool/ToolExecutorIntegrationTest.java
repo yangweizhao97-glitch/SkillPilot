@@ -158,6 +158,33 @@ class ToolExecutorIntegrationTest {
         assertThat(sensitiveLog.getOutput()).containsEntry("authorization", "***");
     }
 
+    @Test
+    void appliesTaskAndAgentPermissionsBeforeMcpTransport() {
+        Resources owner = createResources("mcp-owner");
+        Resources other = createResources("mcp-other");
+
+        ToolResponse<?> disabled = toolExecutor.execute(new ToolRequest<>(
+                CallMcpTool.NAME, new CallMcpTool.Input("remote_search", Map.of("query", "java")),
+                context(owner, AgentNames.JOB_MATCH_AGENT)
+        ));
+        ToolResponse<?> wrongTaskOwner = toolExecutor.execute(new ToolRequest<>(
+                CallMcpTool.NAME, new CallMcpTool.Input("remote_search", Map.of()),
+                new ToolExecutionContext(other.user().getId(), owner.task().getId(), owner.task().getTraceId(),
+                        AgentNames.JOB_MATCH_AGENT)
+        ));
+        ToolResponse<?> wrongAgent = toolExecutor.execute(new ToolRequest<>(
+                CallMcpTool.NAME, new CallMcpTool.Input("remote_search", Map.of()),
+                context(owner, "UNKNOWN_AGENT")
+        ));
+
+        assertThat(disabled.error().code()).isEqualTo("MCP_DISABLED");
+        assertThat(wrongTaskOwner.error().code()).isEqualTo("TOOL_TASK_ACCESS_DENIED");
+        assertThat(wrongAgent.error().code()).isEqualTo("TOOL_AGENT_NOT_ALLOWED");
+        assertThat(toolCallLogRepository.findAll()).hasSize(3)
+                .allMatch(log -> log.getStatus() == ToolCallStatus.TOOL_FAILED)
+                .allMatch(log -> log.getToolName().equals(CallMcpTool.NAME));
+    }
+
     private Resources createResources(String prefix) {
         User user = userRepository.save(new User(
                 prefix + "-" + UUID.randomUUID() + "@example.com", "hash", prefix, UserRole.USER

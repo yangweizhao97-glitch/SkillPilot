@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.5 - 2026-06-21
+
+- Added an optional MCP Streamable HTTP client with initialization, discovery, session, JSON, and SSE response support.
+- Routed remote calls through the existing Tool Registry to preserve task ownership, agent permissions, timing, and tool-call visualization.
+- Required local server configuration plus explicit remote-tool and agent allowlists; MCP remains disabled by default.
+- Added bounded request/response sizes, timeouts, discovery pagination, protocol validation, and isolated remote failures.
+- Redacted MCP content and structured results from audit storage while preserving length and content hashes.
+- Added MCP protocol, allowlist, permission, SSE, and audit regression coverage.
+
 ## 0.2.4 - 2026-06-21
 
 - Added a centralized Prompt Injection policy engine for every secured LLM context.

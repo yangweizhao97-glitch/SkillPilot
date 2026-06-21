@@ -6,6 +6,7 @@ import com.huatai.careeragent.knowledge.embedding.EmbeddingProperties;
 import com.huatai.careeragent.knowledge.retrieval.RetrievalProperties;
 import com.huatai.careeragent.llm.ModelConfig;
 import com.huatai.careeragent.agent.core.AgentProperties;
+import com.huatai.careeragent.mcp.McpProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -17,7 +18,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 		EmbeddingProperties.class,
 		RetrievalProperties.class,
 		ModelConfig.class,
-		AgentProperties.class
+		AgentProperties.class,
+		McpProperties.class
 })
 public class CareerAgentApplication {
 

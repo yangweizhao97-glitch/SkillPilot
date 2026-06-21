@@ -38,3 +38,5 @@ Review date: 2026-06-21
 - Rate limiting, account lockout, TLS termination, CSP, and centralized secret management belong at the production gateway/platform layer.
 - Generated recommendations still require user review and must not be treated as hiring guarantees.
 - Rule-based detection cannot recognize every semantic attack; production telemetry should be reviewed and rules/versioned as attack patterns evolve.
+- MCP is disabled by default. Operators must configure a trusted HTTP(S) endpoint and explicit tool/Agent allowlists; discovered server tools never grant authority by themselves.
+- MCP calls retain local task ownership checks and redacted Tool Registry audit logs. Bearer tokens, remote content, and structured results are not persisted in clear text.

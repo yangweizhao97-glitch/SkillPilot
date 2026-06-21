@@ -992,6 +992,24 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 15 完成
 
+## Phase 17：MCP 远程工具接入与安全边界
+
+**Description:** 在不绕过现有 Tool Registry 的前提下接入 MCP Streamable HTTP，使获准 Agent 能调用显式白名单中的远程工具，并复用任务归属、权限、实时工具事件和脱敏审计能力。
+
+**Acceptance criteria:**
+- [x] 支持 MCP initialize、initialized notification、tools/list 和 tools/call 合同。
+- [x] 支持 JSON 与 SSE Streamable HTTP 响应、协议版本和可选会话 ID。
+- [x] MCP 默认关闭，服务地址、远程工具和可调用 Agent 均由本地配置控制。
+- [x] 远端实际公布的工具必须同时命中本地白名单，未授权工具不会发起网络请求。
+- [x] 所有调用经过现有 user/task/trace/agent 权限校验并产生同一套工具时间线事件。
+- [x] 请求/响应大小、连接/读取超时和分页上限受控，远端故障不会改变职业任务状态合同。
+- [x] MCP 内容与结构化结果在审计日志中只保留长度和哈希摘要。
+- [x] 协议、SSE、白名单、任务越权、Agent 越权和审计脱敏测试通过。
+
+**Release target:** `v0.2.5`
+
+**Dependencies:** Phase 16 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

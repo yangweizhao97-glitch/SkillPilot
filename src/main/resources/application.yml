@@ -76,3 +76,15 @@ career-agent:
       connect-timeout: ${LANGGRAPH_CONNECT_TIMEOUT:2s}
       read-timeout: ${LANGGRAPH_READ_TIMEOUT:10s}
       fallback-enabled: ${LANGGRAPH_FALLBACK_ENABLED:true}
+  mcp:
+    enabled: ${MCP_ENABLED:false}
+    endpoint: ${MCP_ENDPOINT:}
+    server-name: ${MCP_SERVER_NAME:default}
+    protocol-version: ${MCP_PROTOCOL_VERSION:2025-06-18}
+    bearer-token: ${MCP_BEARER_TOKEN:}
+    connect-timeout: ${MCP_CONNECT_TIMEOUT:2s}
+    read-timeout: ${MCP_READ_TIMEOUT:10s}
+    max-request-bytes: ${MCP_MAX_REQUEST_BYTES:65536}
+    max-response-bytes: ${MCP_MAX_RESPONSE_BYTES:1048576}
+    allowed-tools: ${MCP_ALLOWED_TOOLS:}
+    allowed-agents: ${MCP_ALLOWED_AGENTS:JOB_MATCH_AGENT,RESUME_ANALYSIS_AGENT,INTERVIEW_QUESTION_AGENT}
