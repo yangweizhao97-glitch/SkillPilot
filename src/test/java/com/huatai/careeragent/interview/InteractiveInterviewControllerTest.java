@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
@@ -83,6 +84,13 @@ class InteractiveInterviewControllerTest {
                 "followUpQuestion":"请举例说明 REQUIRES_NEW。"}
                 """,
                 "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-1"));
+        when(llmClient.stream(any(), any())).thenAnswer(invocation -> {
+            Consumer<String> onDelta = invocation.getArgument(1);
+            onDelta.accept("请举例说明 ");
+            onDelta.accept("REQUIRES_NEW。");
+            return new LlmResponse("请举例说明 REQUIRES_NEW。", "TEST", "mock", "stop",
+                    LlmResponse.TokenUsage.empty(), 2, "request-stream-1");
+        });
 
         String createBody = mockMvc.perform(post("/api/interview/sessions")
                         .contentType(MediaType.APPLICATION_JSON)

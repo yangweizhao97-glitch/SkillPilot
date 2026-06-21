@@ -31,21 +31,13 @@ public class InterviewStreamService {
                 send(emitter, closed, "INTERVIEW_EVALUATING", new Status("正在分析回答"));
                 send(emitter, closed, "INTERVIEW_SCORING", new Status("正在生成评分与改进建议"));
                 InterviewSessionResponse before = interviews.get(userId, sessionId);
-                InterviewSessionResponse after = interviews.answer(userId, sessionId, answer);
+                InterviewSessionResponse after = interviews.answerStreaming(userId, sessionId, answer,
+                        delta -> sendUnchecked(emitter, closed, "INTERVIEW_FOLLOWUP_STREAMING", new Delta(delta)));
                 if (after.evaluations().size() > before.evaluations().size()) {
                     send(emitter, closed, "INTERVIEW_SCORE_COMPLETED",
                             new Evaluation(after.evaluations().getLast()));
                 } else {
                     send(emitter, closed, "INTERVIEW_SCORE_FAILED", new Status("本次评分暂不可用，面试已继续"));
-                }
-                var additions = after.messages().subList(Math.min(before.messages().size() + 1, after.messages().size()),
-                        after.messages().size());
-                for (var message : additions) {
-                    String content = message.content();
-                    for (int offset = 0; offset < content.length(); offset += 12) {
-                        send(emitter, closed, "INTERVIEW_FOLLOWUP_STREAMING",
-                                new Delta(content.substring(offset, Math.min(content.length(), offset + 12))));
-                    }
                 }
                 send(emitter, closed, "INTERVIEW_FEEDBACK_COMPLETED", new Session(after));
                 if (after.status() == InterviewSessionStatus.FINISHED) {
@@ -69,6 +61,14 @@ public class InterviewStreamService {
     private void send(SseEmitter emitter, AtomicBoolean closed, String name, Object data) throws Exception {
         if (closed.get()) return;
         emitter.send(SseEmitter.event().name(name).data(data));
+    }
+
+    private void sendUnchecked(SseEmitter emitter, AtomicBoolean closed, String name, Object data) {
+        try {
+            send(emitter, closed, name, data);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not send interview stream event", exception);
+        }
     }
 
     public record Status(String message) { }

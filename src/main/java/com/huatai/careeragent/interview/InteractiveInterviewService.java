@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Service
 public class InteractiveInterviewService {
@@ -117,6 +118,31 @@ public class InteractiveInterviewService {
     }
 
     @Transactional
+    public InterviewSessionResponse answerStreaming(Long userId, Long sessionId, String answer,
+                                                    Consumer<String> onDelta) {
+        InterviewSession session = requireSessionForUpdate(userId, sessionId);
+        requireInProgress(session);
+        InterviewQuestion current = requireQuestion(userId, session.currentQuestionId());
+        String normalizedAnswer = answer.trim();
+        InterviewMessage candidateMessage = addMessage(
+                session, current.getId(), InterviewMessageRole.CANDIDATE, normalizedAnswer
+        );
+        AnswerEvaluationDecision decision = evaluateAnswer(
+                session, current, candidateMessage, normalizedAnswer
+        );
+        if (session.getFollowUpCount() == 0 && decision.followUp()) {
+            String followUp = streamFollowUp(session, current, normalizedAnswer, decision, onDelta);
+            if (!followUp.isBlank()) {
+                session.recordFollowUp();
+                addMessage(session, current.getId(), InterviewMessageRole.INTERVIEWER, followUp);
+                return response(session);
+            }
+        }
+        moveNextOrFinish(session);
+        return response(session);
+    }
+
+    @Transactional
     public InterviewSessionResponse finish(Long userId, Long sessionId) {
         InterviewSession session = requireSessionForUpdate(userId, sessionId);
         if (session.getStatus() == InterviewSessionStatus.IN_PROGRESS) {
@@ -156,13 +182,48 @@ public class InteractiveInterviewService {
                     overallScore, result
             ));
             return new AnswerEvaluationDecision(validated.path("followUp").asBoolean(false),
-                    validated.path("followUpQuestion").asText(""));
+                    validated.path("followUpQuestion").asText(""), result);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize interview evaluation", exception);
         } catch (RuntimeException exception) {
             log.warn("Interview answer evaluation failed; advancing to next question: sessionId={}, reason={}",
                     session.getId(), exception.getMessage());
-            return new AnswerEvaluationDecision(false, "");
+            return new AnswerEvaluationDecision(false, "", Map.of());
+        }
+    }
+
+    private String streamFollowUp(InterviewSession session, InterviewQuestion question, String answer,
+                                  AnswerEvaluationDecision decision, Consumer<String> onDelta) {
+        StringBuilder streamed = new StringBuilder();
+        try {
+            String context = objectMapper.writeValueAsString(Map.of(
+                    "question", question.getQuestionText(),
+                    "expectedPoints", question.getExpectedPoints(),
+                    "candidateAnswer", answer,
+                    "evaluation", decision.evaluation()
+            ));
+            String traceId = "interview_followup_" + session.getId() + "_"
+                    + UUID.randomUUID().toString().replace("-", "");
+            var response = llmClient.stream(LlmRequest.secured(
+                    "你是一位严谨、自然且有建设性的中文技术面试官。只输出面试官要说的话，不要输出 JSON。",
+                    "根据评分结果提出一个简短、具体、只聚焦最大信息缺口的追问。只输出一个问题。",
+                    List.of(context), traceId, false
+            ), delta -> {
+                streamed.append(delta);
+                onDelta.accept(delta);
+            });
+            return response == null || response.content() == null ? "" : response.content().trim();
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize interview follow-up context", exception);
+        } catch (RuntimeException exception) {
+            log.warn("Interview follow-up stream failed; using validated fallback: sessionId={}, reason={}",
+                    session.getId(), exception.getMessage());
+            if (!streamed.isEmpty()) {
+                return streamed.toString().trim();
+            }
+            String fallback = decision.followUpQuestion();
+            if (!fallback.isBlank()) onDelta.accept(fallback);
+            return fallback;
         }
     }
 
@@ -258,9 +319,11 @@ public class InteractiveInterviewService {
         );
     }
 
-    private record AnswerEvaluationDecision(boolean followUp, String followUpQuestion) {
+    private record AnswerEvaluationDecision(boolean followUp, String followUpQuestion,
+                                            Map<String, Object> evaluation) {
         AnswerEvaluationDecision {
             followUpQuestion = followUp && followUpQuestion != null ? followUpQuestion.trim() : "";
+            evaluation = evaluation == null ? Map.of() : Map.copyOf(evaluation);
         }
     }
 

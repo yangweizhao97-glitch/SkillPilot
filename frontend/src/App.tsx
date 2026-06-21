@@ -153,7 +153,7 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   }, [])
 
   useEffect(() => { const timer = window.setTimeout(() => void loadSessions(), 0); return () => window.clearTimeout(timer) }, [loadSessions])
-  useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [active?.messages])
+  useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [active?.messages, streamText])
 
   async function openSession(id: number) {
     setBusy(true); setError('')
@@ -176,6 +176,14 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
     setBusy(true); setError('')
     try {
       const submitted = answer.trim(); setAnswer(''); setStreamText(''); setInterviewState('INTERVIEW_ANSWER_RECEIVED')
+      const currentQuestionId = [...active.messages].reverse().find(message => message.role === 'INTERVIEWER')?.questionId
+      setActive(current => current ? {
+        ...current,
+        messages: [...current.messages, {
+          messageId: -Date.now(), questionId: currentQuestionId, role: 'CANDIDATE', content: submitted,
+          sequenceNo: current.messages.length + 1, createdAt: new Date().toISOString()
+        }]
+      } : current)
       await api.streamInterviewAnswer(active.sessionId, submitted, (event, data) => {
         setInterviewState(event)
         if (event === 'INTERVIEW_FOLLOWUP_STREAMING') setStreamText(value => value + String(data.delta || ''))

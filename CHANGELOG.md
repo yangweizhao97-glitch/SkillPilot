@@ -7,6 +7,8 @@
 - Added reconnect support through `Last-Event-ID`, full snapshot reconciliation, and frontend deduplication.
 - Replaced task-detail polling with a recoverable authenticated fetch stream and bounded exponential reconnect.
 - Added SSE lifecycle, reconnect metadata, user-isolation, and client parser regression tests.
+- Replaced post-hoc interview text slicing with provider-level LLM streaming while keeping scoring JSON Schema-validated.
+- Added optimistic candidate messages so submitted answers appear in the transcript immediately.
 
 ## 0.2.0 - 2026-06-21
 
