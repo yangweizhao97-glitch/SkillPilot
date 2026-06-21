@@ -32,6 +32,9 @@ public class InterviewSession {
     @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     @UpdateTimestamp @Column(name = "updated_at", nullable = false) private Instant updatedAt;
     @Column(name = "finished_at") private Instant finishedAt;
+    @Column(name = "processing_answer", nullable = false) private boolean processingAnswer;
+    @Column(name = "processing_started_at") private Instant processingStartedAt;
+    @Column(name = "processing_message_id") private Long processingMessageId;
 
     protected InterviewSession() { }
 
@@ -48,6 +51,14 @@ public class InterviewSession {
     public void advance() { currentQuestionIndex++; followUpCount = 0; }
     public void recordFollowUp() { followUpCount++; }
     public void finish() { status = InterviewSessionStatus.FINISHED; finishedAt = Instant.now(); }
+    public boolean isProcessingAnswer() { return processingAnswer; }
+    public boolean processingIsStale(Instant threshold) {
+        return processingAnswer && (processingStartedAt == null || processingStartedAt.isBefore(threshold));
+    }
+    public void beginAnswerProcessing() { processingAnswer = true; processingStartedAt = Instant.now(); processingMessageId = null; }
+    public void attachProcessingMessage(Long messageId) { processingMessageId = messageId; }
+    public void endAnswerProcessing() { processingAnswer = false; processingStartedAt = null; processingMessageId = null; }
+    public Long getProcessingMessageId() { return processingMessageId; }
 
     public Long getId() { return id; }
     public Long getUserId() { return userId; }

@@ -12,6 +12,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.util.UUID;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class PdfExportService {
@@ -34,20 +38,39 @@ public class PdfExportService {
         byte[] bytes = renderer.render(report,
                 learningPlanRepository.findByUserIdAndTaskId(userId, report.getTaskId()));
         String fileName = "career-report-" + report.getId() + "-v" + report.getVersion() + ".pdf";
+        String storageName = "career-report-" + report.getId() + "-" + UUID.randomUUID() + ".pdf";
+        String previousPath = report.getExportPath();
         Path root = exportRoot();
-        Path relative = Path.of(String.valueOf(userId), fileName);
+        Path relative = Path.of(String.valueOf(userId), storageName);
         Path target = root.resolve(relative).normalize();
         if (!target.startsWith(root)) throw new IllegalStateException("Invalid PDF export path");
+        Path temporary = null;
         try {
             Files.createDirectories(target.getParent());
-            Path temporary = Files.createTempFile(target.getParent(), fileName, ".tmp");
+            temporary = Files.createTempFile(target.getParent(), fileName, ".tmp");
             Files.write(temporary, bytes);
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException exception) {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+            }
             throw new BusinessException("PDF_EXPORT_FAILED", "Could not store PDF report", HttpStatus.INTERNAL_SERVER_ERROR);
         }
         report.markExported(relative.toString());
         reportRepository.save(report);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) {
+                    deleteIfDifferent(root, previousPath, target);
+                } else {
+                    try { Files.deleteIfExists(target); } catch (IOException ignored) { }
+                }
+            }
+        });
         return new PdfExportResponse(report.getId(), fileName, bytes.length, "EXPORTED");
     }
 
@@ -75,6 +98,14 @@ public class PdfExportService {
     }
 
     private Path exportRoot() { return Path.of(properties.getExportDir()).toAbsolutePath().normalize(); }
+
+    private void deleteIfDifferent(Path root, String previousPath, Path current) {
+        if (previousPath == null) return;
+        Path previous = root.resolve(previousPath).normalize();
+        if (previous.startsWith(root) && !previous.equals(current)) {
+            try { Files.deleteIfExists(previous); } catch (IOException ignored) { }
+        }
+    }
 
     public record PdfExportResponse(Long reportId, String fileName, long sizeBytes, String status) { }
     public record PdfDownload(String fileName, byte[] content) { }

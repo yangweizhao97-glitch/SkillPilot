@@ -57,7 +57,8 @@ public class ResumeAnalysisAgent implements Agent<ResumeAnalysisAgent.Input, Res
                 contexts, context.traceId(), true
         ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(
-                "resume_analysis_result.schema.json", response.content(), context.traceId()
+                "resume_analysis_result.schema.json", response.content(), context.traceId(),
+                request -> llmClient.complete(request, context, name())
         );
         outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         ResumeAnalysisReportResponse saved = reportService.saveResumeAnalysis(

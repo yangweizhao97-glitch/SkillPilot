@@ -124,7 +124,8 @@ class CareerWorkflowIntegrationTest {
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(interviewQuestionRepository.findAll()).hasSize(2);
         assertThat(finalReportRepository.findAll()).hasSize(1);
-        assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(12);
+        // Includes the schema-repair LLM call; repair work must be visible in the tool timeline.
+        assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(13);
         var executionLogs = executionLogRepository
                 .findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(fullTaskId, completed.getUserId());
         assertThat(executionLogs)

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class CareerTaskEventStreamService {
     private static final long TIMEOUT_MILLIS = Duration.ofMinutes(5).toMillis();
-    private static final long POLL_MILLIS = 300L;
+    private static final long POLL_MILLIS = 750L;
 
     private final CareerTaskService taskService;
     private final TaskLogService logService;

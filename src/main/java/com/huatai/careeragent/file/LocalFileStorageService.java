@@ -14,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import org.apache.tika.Tika;
 
 @Service
 public class LocalFileStorageService {
@@ -26,6 +27,7 @@ public class LocalFileStorageService {
     );
 
     private final FileStorageProperties properties;
+    private final Tika tika = new Tika();
 
     public LocalFileStorageService(FileStorageProperties properties) {
         this.properties = properties;
@@ -41,7 +43,7 @@ public class LocalFileStorageService {
             throw new BusinessException("FILE_TOO_LARGE", "Uploaded file exceeds size limit", HttpStatus.BAD_REQUEST);
         }
 
-        String mimeType = normalizeMimeType(file.getContentType());
+        String mimeType = detectMimeType(file, sanitizeFileName(file.getOriginalFilename()));
         if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
             throw new BusinessException("UNSUPPORTED_FILE_TYPE", "Unsupported file type", HttpStatus.BAD_REQUEST);
         }
@@ -68,11 +70,33 @@ public class LocalFileStorageService {
         return new StoredFile(originalFileName, mimeType, targetPath.toString(), file.getSize());
     }
 
+    private String detectMimeType(MultipartFile file, String fileName) {
+        try (InputStream input = file.getInputStream()) {
+            return normalizeMimeType(tika.detect(input, fileName));
+        } catch (IOException exception) {
+            throw new BusinessException("FILE_TYPE_DETECTION_FAILED", "Failed to inspect uploaded file",
+                    HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    public void deleteQuietly(String storagePath) {
+        if (!StringUtils.hasText(storagePath)) return;
+        try {
+            Files.deleteIfExists(Path.of(storagePath));
+        } catch (IOException ignored) {
+            // A scheduled storage reconciliation can remove an unreachable file later.
+        }
+    }
+
     private String normalizeMimeType(String contentType) {
         if (!StringUtils.hasText(contentType)) {
             return "application/octet-stream";
         }
-        return contentType.toLowerCase(Locale.ROOT);
+        String normalized = contentType.toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "text/x-web-markdown", "text/x-markdown" -> "text/markdown";
+            default -> normalized;
+        };
     }
 
     private String sanitizeFileName(String originalFileName) {

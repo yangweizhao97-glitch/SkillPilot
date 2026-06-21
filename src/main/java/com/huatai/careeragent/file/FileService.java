@@ -14,6 +14,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import com.huatai.careeragent.knowledge.chunk.DocumentChunkService;
 import com.huatai.careeragent.knowledge.embedding.DocumentEmbeddingService;
@@ -47,6 +49,11 @@ public class FileService {
     @Transactional
     public UploadedFileResponse upload(Long userId, FileType fileType, MultipartFile file) {
         StoredFile storedFile = localFileStorageService.store(userId, file);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) localFileStorageService.deleteQuietly(storedFile.storagePath());
+            }
+        });
         UploadedFile uploadedFile = new UploadedFile(
                 userId,
                 storedFile.originalFileName(),

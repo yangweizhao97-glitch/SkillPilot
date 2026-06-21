@@ -57,7 +57,8 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
                 context.traceId(), true
         ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(
-                "interview_questions.schema.json", response.content(), context.traceId()
+                "interview_questions.schema.json", response.content(), context.traceId(),
+                request -> llmClient.complete(request, context, name())
         );
         outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         List<InterviewQuestionResponse> saved = questionService.save(

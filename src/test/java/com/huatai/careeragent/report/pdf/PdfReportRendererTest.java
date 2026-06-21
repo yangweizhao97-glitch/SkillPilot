@@ -5,6 +5,7 @@ import com.huatai.careeragent.report.FinalReport;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +17,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PdfReportRendererTest {
+    @TempDir
+    Path tempDir;
+
     @Test
     void rendersReadableMultiSectionChineseReport() throws Exception {
         PdfExportProperties properties = new PdfExportProperties();
@@ -28,8 +32,7 @@ class PdfReportRendererTest {
             assertThat(text).contains("职业分析报告", "岗位匹配", "简历分析", "面试题", "个性化学习计划", "Kafka");
             assertThat(document.getNumberOfPages()).isGreaterThanOrEqualTo(1);
         }
-        Path fixture = Path.of("output", "pdf", "phase21-validation-report.pdf");
-        Files.createDirectories(fixture.getParent());
+        Path fixture = tempDir.resolve("validation-report.pdf");
         Files.write(fixture, bytes);
     }
 

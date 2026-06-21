@@ -182,11 +182,11 @@ public class FinalReportService {
     }
 
     public record FinalReportResponse(Long reportId, Long taskId, Long resumeId, Long jobId, int version,
-                                      Map<String, Object> report, String exportStatus, String exportPath,
+                                      Map<String, Object> report, String exportStatus,
                                       Instant createdAt) {
         static FinalReportResponse from(FinalReport report) {
             return new FinalReportResponse(report.getId(), report.getTaskId(), report.getResumeId(), report.getJobId(),
-                    report.getVersion(), report.getReportJson(), report.getExportStatus(), report.getExportPath(),
+                    report.getVersion(), report.getReportJson(), report.getExportStatus(),
                     report.getCreatedAt());
         }
     }

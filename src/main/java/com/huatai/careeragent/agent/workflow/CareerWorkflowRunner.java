@@ -35,7 +35,9 @@ public class CareerWorkflowRunner {
         List<WorkflowStatus> activeAgentSteps = handoffCoordinator.activeAgentSteps(taskId, executionOrder);
         Set<String> visitedAgents = new LinkedHashSet<>();
         int handoffDepth = 0;
-        for (WorkflowStatus status : executionOrder) {
+        List<WorkflowStatus> activeExecutionOrder = new java.util.ArrayList<>(activeAgentSteps);
+        activeExecutionOrder.add(WorkflowStatus.SUCCESS);
+        for (WorkflowStatus status : activeExecutionOrder) {
             stateService.transition(taskId, status);
             if (status != WorkflowStatus.SUCCESS) {
                 long started = System.nanoTime();

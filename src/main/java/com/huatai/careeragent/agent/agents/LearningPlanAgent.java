@@ -44,12 +44,15 @@ public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, Learnin
                 List.of(outputSupport.json(report.report())), context.traceId(), true
         ), context, name());
         RepairResult validated = schemaRepair.validateOrRepair(
-                "learning_plan.schema.json", response.content(), context.traceId());
-        LearningPlanResponse saved = store.save(context.userId(), input.taskId(), report.reportId(), validated.value());
+                "learning_plan.schema.json", response.content(), context.traceId(),
+                request -> llm.complete(request, context, name()));
+        if (!report.reportId().equals(input.reportId())) throw new IllegalStateException("Final report changed during generation");
+        LearningPlanResponse saved = store.complete(context.userId(), input.taskId(), report.reportId(),
+                input.generationId(), validated.value());
         return AgentResult.success(saved, "learningPlanId=" + saved.planId(),
                 outputSupport.totalUsage(response.usage(), validated));
     }
 
     @Override public String summarizeInput(Input input) { return "taskId=" + input.taskId(); }
-    public record Input(Long taskId) { }
+    public record Input(Long taskId, Long reportId, String generationId) { }
 }

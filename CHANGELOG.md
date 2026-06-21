@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.10 - 2026-06-21
+
+- Removed fictitious disabled workflow transitions so career-task events reflect only agents that actually ran.
+- Hardened task isolation, learning-plan completeness checks, generation claims, and schema-repair tool visibility.
+- Moved interview model calls outside database transactions and added guarded, recoverable answer processing.
+- Enforced runtime JWT secrets, content-based upload type detection, rollback file cleanup, and safer PDF exports.
+- Switched career-task SSE workers to virtual threads and fixed delayed browser download URL cleanup.
+
 ## 0.2.9 - 2026-06-21
 
 - Added authenticated PDF generation and download for user-owned final reports.

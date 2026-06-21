@@ -25,6 +25,8 @@ public class LearningPlan {
     @Column(name = "result_json", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> resultJson;
     @Column(name = "schema_version", nullable = false, length = 32) private String schemaVersion;
+    @Column(name = "generation_status", nullable = false, length = 32) private String generationStatus;
+    @Column(name = "generation_id", length = 64) private String generationId;
     @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     @UpdateTimestamp @Column(name = "updated_at", nullable = false) private Instant updatedAt;
 
@@ -36,7 +38,20 @@ public class LearningPlan {
         this.reportId = reportId;
         this.resultJson = Map.copyOf(resultJson);
         this.schemaVersion = "1.0";
+        this.generationStatus = "READY";
     }
+
+    public static LearningPlan generating(Long userId, Long taskId, Long reportId, String generationId) {
+        LearningPlan plan = new LearningPlan();
+        plan.userId = userId; plan.taskId = taskId; plan.reportId = reportId;
+        plan.resultJson = Map.of(); plan.schemaVersion = "1.0"; plan.generationStatus = "GENERATING";
+        plan.generationId = generationId;
+        return plan;
+    }
+
+    public void restart(Long reportId, String generationId) { this.reportId = reportId; this.resultJson = Map.of(); this.generationStatus = "GENERATING"; this.generationId = generationId; }
+    public void complete(Map<String, Object> result) { this.resultJson = Map.copyOf(result); this.generationStatus = "READY"; this.generationId = null; }
+    public void fail() { this.generationStatus = "FAILED"; this.generationId = null; }
 
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
@@ -46,4 +61,6 @@ public class LearningPlan {
     public String getSchemaVersion() { return schemaVersion; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public String getGenerationStatus() { return generationStatus; }
+    public String getGenerationId() { return generationId; }
 }

@@ -43,7 +43,7 @@ management:
 
 career-agent:
   security:
-    jwt-secret: ${JWT_SECRET:change-me-to-a-long-random-secret-at-least-32-characters}
+    jwt-secret: ${JWT_SECRET:}
     jwt-expires-seconds: ${JWT_EXPIRES_SECONDS:7200}
   storage:
     upload-dir: ${UPLOAD_DIR:./data/uploads}
@@ -77,7 +77,6 @@ career-agent:
       max-depth: ${AGENT_HANDOFF_MAX_DEPTH:4}
   workflow:
     engine: ${WORKFLOW_ENGINE:spring}
-    stream-thread-pool-size: ${TASK_STREAM_THREAD_POOL_SIZE:8}
     langgraph:
       base-url: ${LANGGRAPH_BASE_URL:http://localhost:8090}
       connect-timeout: ${LANGGRAPH_CONNECT_TIMEOUT:2s}

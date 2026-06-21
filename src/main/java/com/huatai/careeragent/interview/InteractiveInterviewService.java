@@ -16,7 +16,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,7 @@ public class InteractiveInterviewService {
     private final SchemaRepairService schemaRepairService;
     private final ObjectMapper objectMapper;
     private final InterviewMemoryService memoryService;
+    private final TransactionTemplate transactions;
 
     public InteractiveInterviewService(InterviewSessionRepository sessionRepository,
                                        InterviewMessageRepository messageRepository,
@@ -49,7 +53,8 @@ public class InteractiveInterviewService {
                                        InterviewQuestionRepository questionRepository,
                                        ResumeRepository resumeRepository, JobRepository jobRepository,
                                        LlmClient llmClient, SchemaRepairService schemaRepairService,
-                                       ObjectMapper objectMapper, InterviewMemoryService memoryService) {
+                                       ObjectMapper objectMapper, InterviewMemoryService memoryService,
+                                       PlatformTransactionManager transactionManager) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.evaluationRepository = evaluationRepository;
@@ -60,6 +65,7 @@ public class InteractiveInterviewService {
         this.schemaRepairService = schemaRepairService;
         this.objectMapper = objectMapper;
         this.memoryService = memoryService;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
     @Transactional
@@ -98,56 +104,37 @@ public class InteractiveInterviewService {
         return response(requireSession(userId, sessionId));
     }
 
-    @Transactional
     public InterviewSessionResponse answer(Long userId, Long sessionId, String answer) {
-        InterviewSession session = requireSessionForUpdate(userId, sessionId);
-        requireInProgress(session);
-        InterviewQuestion current = requireQuestion(userId, session.currentQuestionId());
-        InterviewMessage candidateMessage = addMessage(
-                session, current.getId(), InterviewMessageRole.CANDIDATE, answer.trim()
-        );
-
-        AnswerEvaluationDecision decision = evaluateAnswer(session, current, candidateMessage, answer.trim());
-
-        if (session.getFollowUpCount() == 0) {
-            if (decision.followUp() && !decision.followUpQuestion().isBlank()) {
-                session.recordFollowUp();
-                addMessage(session, current.getId(), InterviewMessageRole.INTERVIEWER, decision.followUpQuestion());
-                return response(session);
-            }
+        TurnWork work = beginTurn(userId, sessionId, answer);
+        try {
+            AnswerEvaluationDecision decision = evaluateAnswer(work);
+            return completeTurn(work, decision, decision.followUpQuestion());
+        } catch (RuntimeException exception) {
+            abortTurn(work);
+            throw exception;
         }
-        moveNextOrFinish(session);
-        return response(session);
     }
 
-    @Transactional
     public InterviewSessionResponse answerStreaming(Long userId, Long sessionId, String answer,
                                                     Consumer<String> onDelta) {
-        InterviewSession session = requireSessionForUpdate(userId, sessionId);
-        requireInProgress(session);
-        InterviewQuestion current = requireQuestion(userId, session.currentQuestionId());
-        String normalizedAnswer = answer.trim();
-        InterviewMessage candidateMessage = addMessage(
-                session, current.getId(), InterviewMessageRole.CANDIDATE, normalizedAnswer
-        );
-        AnswerEvaluationDecision decision = evaluateAnswer(
-                session, current, candidateMessage, normalizedAnswer
-        );
-        if (session.getFollowUpCount() == 0 && decision.followUp()) {
-            String followUp = streamFollowUp(session, current, normalizedAnswer, decision, onDelta);
-            if (!followUp.isBlank()) {
-                session.recordFollowUp();
-                addMessage(session, current.getId(), InterviewMessageRole.INTERVIEWER, followUp);
-                return response(session);
-            }
+        TurnWork work = beginTurn(userId, sessionId, answer);
+        try {
+            AnswerEvaluationDecision decision = evaluateAnswer(work);
+            String followUp = work.followUpCount() == 0 && decision.followUp()
+                    ? streamFollowUp(work, decision, onDelta) : "";
+            return completeTurn(work, decision, followUp);
+        } catch (RuntimeException exception) {
+            abortTurn(work);
+            throw exception;
         }
-        moveNextOrFinish(session);
-        return response(session);
     }
 
     @Transactional
     public InterviewSessionResponse finish(Long userId, Long sessionId) {
         InterviewSession session = requireSessionForUpdate(userId, sessionId);
+        if (session.isProcessingAnswer()) {
+            throw new BusinessException("INTERVIEW_ANSWER_PROCESSING", "当前回答仍在处理中", HttpStatus.CONFLICT);
+        }
         if (session.getStatus() == InterviewSessionStatus.IN_PROGRESS) {
             session.finish();
             addMessage(session, session.currentQuestionId(), InterviewMessageRole.INTERVIEWER, CLOSING_MESSAGE);
@@ -155,17 +142,16 @@ public class InteractiveInterviewService {
         return response(session);
     }
 
-    private AnswerEvaluationDecision evaluateAnswer(InterviewSession session, InterviewQuestion question,
-                                                    InterviewMessage candidateMessage, String answer) {
+    private AnswerEvaluationDecision evaluateAnswer(TurnWork work) {
         try {
             String context = objectMapper.writeValueAsString(Map.of(
-                    "question", question.getQuestionText(),
-                    "expectedPoints", question.getExpectedPoints(),
-                    "candidateAnswer", answer,
+                    "question", work.questionText(),
+                    "expectedPoints", work.expectedPoints(),
+                    "candidateAnswer", work.answer(),
                     "interviewMemory", memoryService.get(
-                            session.getUserId(), session.getResumeId(), session.getJobId()).promptContext()
+                            work.userId(), work.resumeId(), work.jobId()).promptContext()
             ));
-            String traceId = "interview_" + session.getId() + "_" + UUID.randomUUID().toString().replace("-", "");
+            String traceId = "interview_" + work.sessionId() + "_" + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.complete(LlmRequest.secured(
                     PromptCatalog.ANSWER_EVALUATION.systemPrompt(),
                     PromptCatalog.ANSWER_EVALUATION.instruction(),
@@ -177,35 +163,30 @@ public class InteractiveInterviewService {
             Map<String, Object> result = objectMapper.convertValue(validated, new TypeReference<>() { });
             int overallScore = canonicalScore(validated, result);
             result.put("overallScore", overallScore);
-            evaluationRepository.save(new InterviewAnswerEvaluation(
-                    session.getUserId(), session.getId(), question.getId(), candidateMessage.getId(),
-                    overallScore, result
-            ));
-            memoryService.record(session, question, overallScore, result);
             return new AnswerEvaluationDecision(validated.path("followUp").asBoolean(false),
-                    validated.path("followUpQuestion").asText(""), result);
+                    validated.path("followUpQuestion").asText(""), result, overallScore);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize interview evaluation", exception);
         } catch (RuntimeException exception) {
             log.warn("Interview answer evaluation failed; advancing to next question: sessionId={}, reason={}",
-                    session.getId(), exception.getMessage());
-            return new AnswerEvaluationDecision(false, "", Map.of());
+                    work.sessionId(), exception.getMessage());
+            return new AnswerEvaluationDecision(false, "", Map.of(), null);
         }
     }
 
-    private String streamFollowUp(InterviewSession session, InterviewQuestion question, String answer,
+    private String streamFollowUp(TurnWork work,
                                   AnswerEvaluationDecision decision, Consumer<String> onDelta) {
         StringBuilder streamed = new StringBuilder();
         try {
             String context = objectMapper.writeValueAsString(Map.of(
-                    "question", question.getQuestionText(),
-                    "expectedPoints", question.getExpectedPoints(),
-                    "candidateAnswer", answer,
+                    "question", work.questionText(),
+                    "expectedPoints", work.expectedPoints(),
+                    "candidateAnswer", work.answer(),
                     "evaluation", decision.evaluation(),
                     "interviewMemory", memoryService.get(
-                            session.getUserId(), session.getResumeId(), session.getJobId()).promptContext()
+                            work.userId(), work.resumeId(), work.jobId()).promptContext()
             ));
-            String traceId = "interview_followup_" + session.getId() + "_"
+            String traceId = "interview_followup_" + work.sessionId() + "_"
                     + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.stream(LlmRequest.secured(
                     PromptCatalog.INTERVIEW_FOLLOW_UP.systemPrompt(),
@@ -220,7 +201,7 @@ public class InteractiveInterviewService {
             throw new IllegalStateException("Could not serialize interview follow-up context", exception);
         } catch (RuntimeException exception) {
             log.warn("Interview follow-up stream failed; using validated fallback: sessionId={}, reason={}",
-                    session.getId(), exception.getMessage());
+                    work.sessionId(), exception.getMessage());
             if (!streamed.isEmpty()) {
                 return streamed.toString().trim();
             }
@@ -228,6 +209,76 @@ public class InteractiveInterviewService {
             if (!fallback.isBlank()) onDelta.accept(fallback);
             return fallback;
         }
+    }
+
+    private TurnWork beginTurn(Long userId, Long sessionId, String answer) {
+        String normalized = answer == null ? "" : answer.trim();
+        if (normalized.isBlank()) {
+            throw new BusinessException("INTERVIEW_ANSWER_REQUIRED", "回答不能为空", HttpStatus.BAD_REQUEST);
+        }
+        return Objects.requireNonNull(transactions.execute(status -> {
+            InterviewSession session = requireSessionForUpdate(userId, sessionId);
+            requireInProgress(session);
+            if (session.isProcessingAnswer() && !session.processingIsStale(Instant.now().minus(Duration.ofMinutes(3)))) {
+                throw new BusinessException("INTERVIEW_ANSWER_PROCESSING", "当前回答仍在处理中", HttpStatus.CONFLICT);
+            }
+            if (session.isProcessingAnswer()) discardStaleTurn(session);
+            session.beginAnswerProcessing();
+            InterviewQuestion question = requireQuestion(userId, session.currentQuestionId());
+            InterviewMessage candidate = addMessage(
+                    session, question.getId(), InterviewMessageRole.CANDIDATE, normalized);
+            session.attachProcessingMessage(candidate.getId());
+            return new TurnWork(session.getId(), session.getUserId(), session.getResumeId(), session.getJobId(),
+                    question.getId(), question.getQuestionText(), question.getExpectedPoints(),
+                    candidate.getId(), session.getFollowUpCount(), normalized);
+        }));
+    }
+
+    private InterviewSessionResponse completeTurn(TurnWork work, AnswerEvaluationDecision decision, String followUp) {
+        return Objects.requireNonNull(transactions.execute(status -> {
+            InterviewSession session = requireSessionForUpdate(work.userId(), work.sessionId());
+            requireInProgress(session);
+            if (!session.isProcessingAnswer() || !session.currentQuestionId().equals(work.questionId())
+                    || !work.candidateMessageId().equals(session.getProcessingMessageId())) {
+                throw new BusinessException("INTERVIEW_TURN_CHANGED", "面试题状态已经变化", HttpStatus.CONFLICT);
+            }
+            InterviewQuestion question = requireQuestion(work.userId(), work.questionId());
+            if (decision.overallScore() != null) {
+                evaluationRepository.save(new InterviewAnswerEvaluation(
+                        work.userId(), work.sessionId(), work.questionId(), work.candidateMessageId(),
+                        decision.overallScore(), decision.evaluation()));
+                memoryService.record(session, question, decision.overallScore(), decision.evaluation());
+            }
+            if (session.getFollowUpCount() == 0 && decision.followUp() && followUp != null && !followUp.isBlank()) {
+                session.recordFollowUp();
+                addMessage(session, question.getId(), InterviewMessageRole.INTERVIEWER, followUp.trim());
+            } else {
+                moveNextOrFinish(session);
+            }
+            session.endAnswerProcessing();
+            return response(session);
+        }));
+    }
+
+    private void abortTurn(TurnWork work) {
+        transactions.executeWithoutResult(status -> {
+            InterviewSession session = requireSessionForUpdate(work.userId(), work.sessionId());
+            if (session.isProcessingAnswer() && session.currentQuestionId().equals(work.questionId())
+                    && work.candidateMessageId().equals(session.getProcessingMessageId())) {
+                evaluationRepository.findByAnswerMessageId(work.candidateMessageId()).ifPresentOrElse(
+                        ignored -> { }, () -> messageRepository.deleteById(work.candidateMessageId()));
+                session.endAnswerProcessing();
+            }
+        });
+    }
+
+    private void discardStaleTurn(InterviewSession session) {
+        Long messageId = session.getProcessingMessageId();
+        if (messageId != null) {
+            evaluationRepository.findByAnswerMessageId(messageId).ifPresentOrElse(
+                    ignored -> { }, () -> messageRepository.deleteById(messageId));
+        }
+        session.endAnswerProcessing();
     }
 
     @SuppressWarnings("unchecked")
@@ -322,8 +373,12 @@ public class InteractiveInterviewService {
         );
     }
 
+    private record TurnWork(Long sessionId, Long userId, Long resumeId, Long jobId, Long questionId,
+                            String questionText, List<String> expectedPoints, Long candidateMessageId,
+                            int followUpCount, String answer) { }
+
     private record AnswerEvaluationDecision(boolean followUp, String followUpQuestion,
-                                            Map<String, Object> evaluation) {
+                                            Map<String, Object> evaluation, Integer overallScore) {
         AnswerEvaluationDecision {
             followUpQuestion = followUp && followUpQuestion != null ? followUpQuestion.trim() : "";
             evaluation = evaluation == null ? Map.of() : Map.copyOf(evaluation);

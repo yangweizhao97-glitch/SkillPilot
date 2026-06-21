@@ -81,11 +81,11 @@ public class AgentTask {
     }
 
     public void transitionTo(WorkflowStatus next) {
-        if (!status.canTransitionTo(next)) {
+        if (!canTransitionTo(next)) {
             throw new IllegalStateException("Invalid workflow transition: " + status + " -> " + next);
         }
         Instant now = Instant.now();
-        if (status == WorkflowStatus.PENDING && next == WorkflowStatus.MATCHING_JOB) {
+        if (status == WorkflowStatus.PENDING && !next.isTerminal()) {
             startedAt = now;
         }
         status = next;
@@ -93,6 +93,20 @@ public class AgentTask {
         if (next.isTerminal()) {
             finishedAt = now;
         }
+    }
+
+    private boolean canTransitionTo(WorkflowStatus next) {
+        if (next == WorkflowStatus.FAILED) return !status.isTerminal();
+        List<WorkflowStatus> active = new ArrayList<>();
+        for (WorkflowStatus candidate : List.of(
+                WorkflowStatus.MATCHING_JOB, WorkflowStatus.ANALYZING_RESUME,
+                WorkflowStatus.GENERATING_QUESTIONS)) {
+            if (enabledSteps.contains(candidate)) active.add(candidate);
+        }
+        if (jobId != null) active.add(WorkflowStatus.GENERATING_FINAL_REPORT);
+        active.add(WorkflowStatus.SUCCESS);
+        int currentIndex = status == WorkflowStatus.PENDING ? -1 : active.indexOf(status);
+        return currentIndex >= -1 && currentIndex + 1 < active.size() && active.get(currentIndex + 1) == next;
     }
 
     public void fail(String message) {

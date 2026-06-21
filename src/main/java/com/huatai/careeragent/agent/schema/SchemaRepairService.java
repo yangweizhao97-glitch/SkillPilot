@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.function.Function;
 
 @Service
 public class SchemaRepairService {
@@ -27,6 +28,11 @@ public class SchemaRepairService {
     }
 
     public RepairResult validateOrRepair(String schemaName, String rawOutput, String traceId) {
+        return validateOrRepair(schemaName, rawOutput, traceId, llmClient::complete);
+    }
+
+    public RepairResult validateOrRepair(String schemaName, String rawOutput, String traceId,
+                                         Function<LlmRequest, LlmResponse> repairCaller) {
         String normalized = stripCodeFence(rawOutput);
         SchemaValidationResult initial = schemaValidator.validate(schemaName, normalized);
         if (initial.valid()) {
@@ -44,7 +50,7 @@ public class SchemaRepairService {
                 traceId,
                 true
         );
-        LlmResponse repairResponse = llmClient.complete(repairRequest);
+        LlmResponse repairResponse = repairCaller.apply(repairRequest);
         SchemaValidationResult repaired = schemaValidator.validate(schemaName, stripCodeFence(repairResponse.content()));
         if (!repaired.valid()) {
             log.warn(

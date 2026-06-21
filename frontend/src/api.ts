@@ -137,7 +137,7 @@ export const api = {
     })
     if (!response.ok) throw new Error('PDF 下载失败')
     const url = URL.createObjectURL(await response.blob()); const anchor = document.createElement('a')
-    anchor.href = url; anchor.download = fileName; anchor.click(); URL.revokeObjectURL(url)
+    anchor.href = url; anchor.download = fileName; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 0)
   },
   interviewSessions: () => request<InterviewSessionSummary[]>('/api/interview/sessions'),
   interviewSession: (id: number) => request<InterviewSession>(`/api/interview/sessions/${id}`),

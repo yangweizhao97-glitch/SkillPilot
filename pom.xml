@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.huatai</groupId>
 	<artifactId>career-agent</artifactId>
-	<version>0.2.9</version>
+	<version>0.2.10</version>
 	<name>career-agent</name>
 	<description>CareerAgent AI career assistant</description>
 	<url/>
@@ -130,6 +130,7 @@
 				<configuration>
 					<systemPropertyVariables>
 						<spring.datasource.url>jdbc:postgresql://localhost:5432/career_agent_test</spring.datasource.url>
+						<JWT_SECRET>career-agent-test-secret-at-least-32-characters</JWT_SECRET>
 					</systemPropertyVariables>
 				</configuration>
 			</plugin>

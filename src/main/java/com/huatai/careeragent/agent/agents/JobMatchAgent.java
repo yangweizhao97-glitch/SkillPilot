@@ -57,7 +57,8 @@ public class JobMatchAgent implements Agent<JobMatchAgent.Input, JobMatchReportR
                 context.traceId(), true
         ), context, name());
         RepairResult validated = schemaRepairService.validateOrRepair(
-                "job_match_result.schema.json", response.content(), context.traceId()
+                "job_match_result.schema.json", response.content(), context.traceId(),
+                request -> llmClient.complete(request, context, name())
         );
         outputSupport.normalizeCitations(validated.value(), allowedCitations, context.traceId());
         JobMatchReportResponse saved = reportService.saveJobMatch(

@@ -7,6 +7,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Configuration
 @EnableAsync
@@ -42,17 +44,7 @@ public class AsyncConfig {
     }
 
     @Bean(name = "careerTaskStreamExecutor")
-    public Executor careerTaskStreamExecutor(
-            @Value("${career-agent.workflow.stream-thread-pool-size:8}") int poolSize
-    ) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(poolSize);
-        executor.setMaxPoolSize(poolSize);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("career-task-stream-");
-        executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(10);
-        executor.initialize();
-        return executor;
+    public ExecutorService careerTaskStreamExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
     }
 }
