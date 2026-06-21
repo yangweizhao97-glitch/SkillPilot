@@ -20,7 +20,9 @@ public final class PromptCatalog {
             "interview-questions-v1",
             "You generate personalized interview questions. Return strict JSON only.",
             "Return a questions array. Each item requires question, questionType, difficulty, expectedPoints, "
-                    + "citations and noCitationReason. Use a supplied citationId or explain why no citation applies."
+                    + "answerOutline, referenceAnswer, scoringRubric, commonMistakes, followUpCandidates, "
+                    + "citations and noCitationReason. The rubric weights must total 100. Use a supplied "
+                    + "citationId or explain why no citation applies."
     );
     public static final PromptContract ANSWER_EVALUATION = new PromptContract(
             "answer-evaluation-v1",
@@ -28,8 +30,10 @@ public final class PromptCatalog {
             "Score the answer against the question and expected points. Return exactly accuracy, relevance, "
                     + "depth, and communication with 0-100 integer scores. The server weights them 35%, "
                     + "25%, 25%, and 15%. Give evidence-based strengths, specific improvements, and a concise "
-                    + "improved Chinese answer. Set followUp=true with one short question only when a material "
-                    + "gap needs clarification; otherwise set followUp=false and followUpQuestion to an empty string."
+                    + "improved Chinese answer. Classify answerDisposition as NO_ANSWER, OFF_TOPIC, PARTIAL, "
+                    + "INCORRECT, or COMPLETE; provide missingPoints; select nextAction from CLARIFY, DEEPEN, "
+                    + "CHALLENGE, CORRECT, or NEXT. Set followUp consistently with nextAction and return one "
+                    + "short followUpQuestion only when nextAction is not NEXT."
     );
     public static final PromptContract INTERVIEW_FOLLOW_UP = new PromptContract(
             "interview-follow-up-v1",

@@ -137,6 +137,27 @@ class InteractiveInterviewServiceIntegrationTest {
 
         memoryService.clear(user.getId(), resume.getId(), job.getId());
         assertThat(memoryService.get(user.getId(), resume.getId(), job.getId()).available()).isFalse();
+
+        var invalidSession = service.create(user.getId(), resume.getId(), job.getId());
+        var clarification = service.answer(user.getId(), invalidSession.sessionId(), "不知道");
+        assertThat(clarification.currentQuestion()).isEqualTo(1);
+        assertThat(clarification.evaluations().getFirst().result())
+                .containsEntry("answerDisposition", "NO_ANSWER")
+                .containsEntry("nextAction", "CLARIFY");
+        assertThat(clarification.messages().getLast().content()).contains("请先具体说明");
+        assertThat(memoryService.get(user.getId(), resume.getId(), job.getId()).available()).isFalse();
+        verify(llmClient, times(4)).complete(any());
+
+        doReturn(new LlmResponse(
+                adaptiveEvaluationJson(), "TEST", "mock", "stop",
+                LlmResponse.TokenUsage.empty(), 1, "request-adaptive"
+        )).when(llmClient).complete(any());
+        var secondClarification = service.answer(user.getId(), invalidSession.sessionId(), "我会先定义事务边界。");
+        assertThat(secondClarification.currentQuestion()).isEqualTo(1);
+        var thirdClarification = service.answer(user.getId(), invalidSession.sessionId(), "再说明传播行为。");
+        assertThat(thirdClarification.currentQuestion()).isEqualTo(1);
+        var forcedAdvance = service.answer(user.getId(), invalidSession.sessionId(), "最后补充失败恢复与验证。");
+        assertThat(forcedAdvance.currentQuestion()).isEqualTo(2);
     }
 
     private String evaluationJson(String followUpQuestion) {
@@ -150,6 +171,20 @@ class InteractiveInterviewServiceIntegrationTest {
                 "improvedAnswer":"事务通过传播行为和隔离级别协调一致性边界。",
                 "followUp":true,"followUpQuestion":"%s"}
                 """.formatted(followUpQuestion);
+    }
+
+    private String adaptiveEvaluationJson() {
+        return """
+                {"schemaVersion":"1.0","overallScore":58,"dimensions":[
+                  {"key":"accuracy","label":"准确性","score":60,"rationale":"部分正确"},
+                  {"key":"relevance","label":"相关性","score":70,"rationale":"围绕问题"},
+                  {"key":"depth","label":"深度","score":40,"rationale":"缺少细节"},
+                  {"key":"communication","label":"表达","score":65,"rationale":"表达清楚"}
+                ],"strengths":["方向正确"],"improvements":["补充具体机制"],
+                "improvedAnswer":"先说明边界，再说明传播行为和失败恢复。",
+                "followUp":true,"followUpQuestion":"请继续补充具体机制。",
+                "answerDisposition":"PARTIAL","nextAction":"DEEPEN","missingPoints":["具体机制"]}
+                """;
     }
 
     private InterviewQuestion question(Long userId, Long resumeId, Long jobId, String text) {

@@ -1,6 +1,8 @@
 package com.huatai.careeragent.interview;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.resume.ResumeRepository;
@@ -12,33 +14,57 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class InterviewQuestionService {
     private final InterviewQuestionRepository repository;
     private final ResumeRepository resumeRepository;
     private final JobRepository jobRepository;
+    private final ObjectMapper objectMapper;
 
     public InterviewQuestionService(InterviewQuestionRepository repository, ResumeRepository resumeRepository,
-                                    JobRepository jobRepository) {
+                                    JobRepository jobRepository, ObjectMapper objectMapper) {
         this.repository = repository;
         this.resumeRepository = resumeRepository;
         this.jobRepository = jobRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
     public List<InterviewQuestionResponse> save(Long userId, Long resumeId, Long jobId, Long taskId, JsonNode result) {
         List<InterviewQuestion> questions = new ArrayList<>();
         for (JsonNode item : result.path("questions")) {
+            List<String> expectedPoints = strings(item.path("expectedPoints"));
             questions.add(new InterviewQuestion(
                     userId, resumeId, jobId, taskId, item.path("question").asText(),
                     QuestionType.valueOf(item.path("questionType").asText()),
                     QuestionDifficulty.valueOf(item.path("difficulty").asText()),
-                    strings(item.path("expectedPoints")), strings(item.path("citations")),
-                    item.path("noCitationReason").isNull() ? null : item.path("noCitationReason").asText(null)
+                    expectedPoints, strings(item.path("citations")),
+                    item.path("noCitationReason").isNull() ? null : item.path("noCitationReason").asText(null),
+                    strings(item.path("answerOutline")), item.path("referenceAnswer").asText(null),
+                    rubric(item.path("scoringRubric"), expectedPoints), strings(item.path("commonMistakes")),
+                    strings(item.path("followUpCandidates"))
             ));
         }
         return repository.saveAll(questions).stream().map(InterviewQuestionResponse::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewQuestionAnswerResponse answer(Long userId, Long questionId) {
+        InterviewQuestion question = repository.findByIdAndUserId(questionId, userId)
+                .orElseThrow(() -> new BusinessException("INTERVIEW_QUESTION_NOT_FOUND",
+                        "面试题不存在", HttpStatus.NOT_FOUND));
+        List<String> outline = question.getAnswerOutline().isEmpty()
+                ? question.getExpectedPoints() : question.getAnswerOutline();
+        String referenceAnswer = question.getReferenceAnswer();
+        if (referenceAnswer == null || referenceAnswer.isBlank()) {
+            referenceAnswer = "建议围绕以下要点组织回答：" + String.join("、", outline) + "。";
+        }
+        List<Map<String, Object>> rubric = question.getScoringRubric().isEmpty()
+                ? defaultRubric(question.getExpectedPoints()) : question.getScoringRubric();
+        return new InterviewQuestionAnswerResponse(question.getId(), outline, referenceAnswer, rubric,
+                question.getCommonMistakes(), question.getFollowUpCandidates(), question.getCitations());
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +93,33 @@ public class InterviewQuestionService {
         return values;
     }
 
+    private List<Map<String, Object>> maps(JsonNode array) {
+        if (!array.isArray()) return List.of();
+        return objectMapper.convertValue(array, new TypeReference<>() { });
+    }
+
+    private List<Map<String, Object>> rubric(JsonNode value, List<String> expectedPoints) {
+        List<Map<String, Object>> rubric = maps(value);
+        int total = rubric.stream().map(item -> item.get("weight")).mapToInt(weight -> weight instanceof Number number
+                ? number.intValue() : 0).sum();
+        boolean valid = !rubric.isEmpty() && total == 100 && rubric.stream().allMatch(item ->
+                item.get("criterion") instanceof String criterion && !criterion.isBlank()
+                        && item.get("weight") instanceof Number number && number.intValue() > 0);
+        return valid ? rubric : defaultRubric(expectedPoints);
+    }
+
+    private List<Map<String, Object>> defaultRubric(List<String> expectedPoints) {
+        if (expectedPoints.isEmpty()) return List.of();
+        int base = 100 / expectedPoints.size();
+        int remainder = 100 - base * expectedPoints.size();
+        List<Map<String, Object>> rubric = new ArrayList<>();
+        for (int index = 0; index < expectedPoints.size(); index++) {
+            rubric.add(Map.of("criterion", expectedPoints.get(index),
+                    "weight", base + (index == 0 ? remainder : 0)));
+        }
+        return List.copyOf(rubric);
+    }
+
     public record InterviewQuestionResponse(Long questionId, Long resumeId, Long jobId, String question,
                                             QuestionType questionType, QuestionDifficulty difficulty,
                                             List<String> expectedPoints, List<String> citations,
@@ -78,4 +131,11 @@ public class InterviewQuestionService {
                     question.getCreatedAt());
         }
     }
+
+    public record InterviewQuestionAnswerResponse(Long questionId, List<String> answerOutline,
+                                                  String referenceAnswer,
+                                                  List<Map<String, Object>> scoringRubric,
+                                                  List<String> commonMistakes,
+                                                  List<String> followUpCandidates,
+                                                  List<String> citations) { }
 }

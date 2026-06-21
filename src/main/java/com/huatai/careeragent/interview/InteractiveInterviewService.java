@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 public class InteractiveInterviewService {
     private static final Logger log = LoggerFactory.getLogger(InteractiveInterviewService.class);
     private static final String CLOSING_MESSAGE = "本轮面试已结束。你的回答已经保存，可以返回会话列表查看记录。";
+    private static final int MAX_ADAPTIVE_FOLLOW_UPS = 3;
     private static final Map<String, Integer> SCORE_WEIGHTS = Map.of(
             "accuracy", 35, "relevance", 25, "depth", 25, "communication", 15
     );
@@ -120,7 +121,7 @@ public class InteractiveInterviewService {
         TurnWork work = beginTurn(userId, sessionId, answer);
         try {
             AnswerEvaluationDecision decision = evaluateAnswer(work);
-            String followUp = work.followUpCount() == 0 && decision.followUp()
+            String followUp = canFollowUp(work, decision)
                     ? streamFollowUp(work, decision, onDelta) : "";
             return completeTurn(work, decision, followUp);
         } catch (RuntimeException exception) {
@@ -143,10 +144,12 @@ public class InteractiveInterviewService {
     }
 
     private AnswerEvaluationDecision evaluateAnswer(TurnWork work) {
+        if (isNonAnswer(work.answer())) return nonAnswerDecision(work);
         try {
             String context = objectMapper.writeValueAsString(Map.of(
                     "question", work.questionText(),
                     "expectedPoints", work.expectedPoints(),
+                    "evaluationGuide", work.evaluationGuide(),
                     "candidateAnswer", work.answer(),
                     "interviewMemory", memoryService.get(
                             work.userId(), work.resumeId(), work.jobId()).promptContext()
@@ -163,15 +166,100 @@ public class InteractiveInterviewService {
             Map<String, Object> result = objectMapper.convertValue(validated, new TypeReference<>() { });
             int overallScore = canonicalScore(validated, result);
             result.put("overallScore", overallScore);
-            return new AnswerEvaluationDecision(validated.path("followUp").asBoolean(false),
-                    validated.path("followUpQuestion").asText(""), result, overallScore);
+            boolean adaptive = validated.hasNonNull("answerDisposition") || validated.hasNonNull("nextAction");
+            InterviewAnswerDisposition disposition = disposition(validated, overallScore);
+            InterviewNextAction nextAction = nextAction(validated, disposition,
+                    validated.path("followUp").asBoolean(false));
+            List<String> missingPoints = strings(validated.path("missingPoints"));
+            result.put("answerDisposition", disposition.name());
+            result.put("nextAction", nextAction.name());
+            result.put("missingPoints", missingPoints);
+            result.put("followUp", nextAction != InterviewNextAction.NEXT);
+            if (nextAction == InterviewNextAction.NEXT) result.put("followUpQuestion", "");
+            return new AnswerEvaluationDecision(nextAction != InterviewNextAction.NEXT,
+                    validated.path("followUpQuestion").asText(""), result, overallScore,
+                    disposition, nextAction, adaptive);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize interview evaluation", exception);
         } catch (RuntimeException exception) {
             log.warn("Interview answer evaluation failed; advancing to next question: sessionId={}, reason={}",
                     work.sessionId(), exception.getMessage());
-            return new AnswerEvaluationDecision(false, "", Map.of(), null);
+            return new AnswerEvaluationDecision(false, "", Map.of(), null,
+                    InterviewAnswerDisposition.COMPLETE, InterviewNextAction.NEXT, false);
         }
+    }
+
+    private AnswerEvaluationDecision nonAnswerDecision(TurnWork work) {
+        String focus = work.expectedPoints().isEmpty() ? "你会如何分析这个问题"
+                : work.expectedPoints().getFirst();
+        String followUp = "你的回答还没有提供足够信息。请先具体说明“" + focus + "”。";
+        List<Map<String, Object>> dimensions = List.of(
+                dimension("accuracy", "准确性", "当前回答没有可核验的技术内容。"),
+                dimension("relevance", "相关性", "当前回答尚未回应题目。"),
+                dimension("depth", "深度", "需要补充具体原理、步骤或案例。"),
+                dimension("communication", "表达", "请用完整句子说明你的判断。")
+        );
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("schemaVersion", "1.0");
+        result.put("overallScore", 0);
+        result.put("dimensions", dimensions);
+        result.put("strengths", List.of());
+        result.put("improvements", List.of("先直接回答问题，再补充原因和具体案例。"));
+        result.put("improvedAnswer", "可以从“" + focus + "”开始，说明做法、原因和结果。");
+        result.put("followUp", true);
+        result.put("followUpQuestion", followUp);
+        result.put("answerDisposition", InterviewAnswerDisposition.NO_ANSWER.name());
+        result.put("nextAction", InterviewNextAction.CLARIFY.name());
+        result.put("missingPoints", work.expectedPoints());
+        return new AnswerEvaluationDecision(true, followUp, result, 0,
+                InterviewAnswerDisposition.NO_ANSWER, InterviewNextAction.CLARIFY, true);
+    }
+
+    private Map<String, Object> dimension(String key, String label, String rationale) {
+        return Map.of("key", key, "label", label, "score", 0,
+                "weight", SCORE_WEIGHTS.get(key), "rationale", rationale);
+    }
+
+    private boolean isNonAnswer(String answer) {
+        String normalized = answer.replaceAll("[\\p{Punct}\\s，。！？、；：]", "").toLowerCase();
+        return normalized.length() < 4 || List.of("不知道", "不会", "不清楚", "没了解", "你好", "测试")
+                .stream().anyMatch(normalized::equals);
+    }
+
+    private InterviewAnswerDisposition disposition(JsonNode value, int score) {
+        try {
+            if (value.hasNonNull("answerDisposition")) {
+                return InterviewAnswerDisposition.valueOf(value.path("answerDisposition").asText());
+            }
+        } catch (IllegalArgumentException ignored) { }
+        if (score >= 75) return InterviewAnswerDisposition.COMPLETE;
+        if (score >= 45) return InterviewAnswerDisposition.PARTIAL;
+        return InterviewAnswerDisposition.INCORRECT;
+    }
+
+    private InterviewNextAction nextAction(JsonNode value, InterviewAnswerDisposition disposition,
+                                           boolean legacyFollowUp) {
+        try {
+            if (value.hasNonNull("nextAction")) {
+                return InterviewNextAction.valueOf(value.path("nextAction").asText());
+            }
+        } catch (IllegalArgumentException ignored) { }
+        if (!legacyFollowUp) return InterviewNextAction.NEXT;
+        return disposition == InterviewAnswerDisposition.INCORRECT
+                ? InterviewNextAction.CORRECT : InterviewNextAction.DEEPEN;
+    }
+
+    private List<String> strings(JsonNode value) {
+        if (!value.isArray()) return List.of();
+        return java.util.stream.StreamSupport.stream(value.spliterator(), false)
+                .map(JsonNode::asText).filter(text -> !text.isBlank()).toList();
+    }
+
+    private boolean canFollowUp(TurnWork work, AnswerEvaluationDecision decision) {
+        if (!decision.followUp()) return false;
+        return decision.adaptive()
+                ? work.followUpCount() < MAX_ADAPTIVE_FOLLOW_UPS
+                : work.followUpCount() == 0;
     }
 
     private String streamFollowUp(TurnWork work,
@@ -181,6 +269,7 @@ public class InteractiveInterviewService {
             String context = objectMapper.writeValueAsString(Map.of(
                     "question", work.questionText(),
                     "expectedPoints", work.expectedPoints(),
+                    "evaluationGuide", work.evaluationGuide(),
                     "candidateAnswer", work.answer(),
                     "evaluation", decision.evaluation(),
                     "interviewMemory", memoryService.get(
@@ -230,8 +319,20 @@ public class InteractiveInterviewService {
             session.attachProcessingMessage(candidate.getId());
             return new TurnWork(session.getId(), session.getUserId(), session.getResumeId(), session.getJobId(),
                     question.getId(), question.getQuestionText(), question.getExpectedPoints(),
-                    candidate.getId(), session.getFollowUpCount(), normalized);
+                    evaluationGuide(question), candidate.getId(), session.getFollowUpCount(), normalized);
         }));
+    }
+
+    private Map<String, Object> evaluationGuide(InterviewQuestion question) {
+        Map<String, Object> guide = new java.util.LinkedHashMap<>();
+        guide.put("answerOutline", question.getAnswerOutline());
+        if (question.getReferenceAnswer() != null && !question.getReferenceAnswer().isBlank()) {
+            guide.put("referenceAnswer", question.getReferenceAnswer());
+        }
+        guide.put("scoringRubric", question.getScoringRubric());
+        guide.put("commonMistakes", question.getCommonMistakes());
+        guide.put("followUpCandidates", question.getFollowUpCandidates());
+        return Map.copyOf(guide);
     }
 
     private InterviewSessionResponse completeTurn(TurnWork work, AnswerEvaluationDecision decision, String followUp) {
@@ -247,9 +348,11 @@ public class InteractiveInterviewService {
                 evaluationRepository.save(new InterviewAnswerEvaluation(
                         work.userId(), work.sessionId(), work.questionId(), work.candidateMessageId(),
                         decision.overallScore(), decision.evaluation()));
-                memoryService.record(session, question, decision.overallScore(), decision.evaluation());
+                if (decision.countsTowardMemory()) {
+                    memoryService.record(session, question, decision.overallScore(), decision.evaluation());
+                }
             }
-            if (session.getFollowUpCount() == 0 && decision.followUp() && followUp != null && !followUp.isBlank()) {
+            if (canFollowUp(work, decision) && followUp != null && !followUp.isBlank()) {
                 session.recordFollowUp();
                 addMessage(session, question.getId(), InterviewMessageRole.INTERVIEWER, followUp.trim());
             } else {
@@ -374,14 +477,22 @@ public class InteractiveInterviewService {
     }
 
     private record TurnWork(Long sessionId, Long userId, Long resumeId, Long jobId, Long questionId,
-                            String questionText, List<String> expectedPoints, Long candidateMessageId,
+                            String questionText, List<String> expectedPoints,
+                            Map<String, Object> evaluationGuide, Long candidateMessageId,
                             int followUpCount, String answer) { }
 
     private record AnswerEvaluationDecision(boolean followUp, String followUpQuestion,
-                                            Map<String, Object> evaluation, Integer overallScore) {
+                                            Map<String, Object> evaluation, Integer overallScore,
+                                            InterviewAnswerDisposition disposition,
+                                            InterviewNextAction nextAction, boolean adaptive) {
         AnswerEvaluationDecision {
             followUpQuestion = followUp && followUpQuestion != null ? followUpQuestion.trim() : "";
             evaluation = evaluation == null ? Map.of() : Map.copyOf(evaluation);
+        }
+
+        boolean countsTowardMemory() {
+            return disposition != InterviewAnswerDisposition.NO_ANSWER
+                    && disposition != InterviewAnswerDisposition.OFF_TOPIC;
         }
     }
 

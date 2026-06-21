@@ -3,6 +3,7 @@ package com.huatai.careeragent.interview;
 import com.huatai.careeragent.common.api.ApiResponse;
 import com.huatai.careeragent.common.security.CurrentUser;
 import com.huatai.careeragent.interview.InterviewQuestionService.InterviewQuestionResponse;
+import com.huatai.careeragent.interview.InterviewQuestionService.InterviewQuestionAnswerResponse;
 import com.huatai.careeragent.task.CareerTaskDtos.CareerTaskResponse;
 import com.huatai.careeragent.task.CareerTaskService;
 import com.huatai.careeragent.task.WorkflowStatus;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -46,6 +48,12 @@ public class InterviewQuestionController {
             @RequestParam(required = false) QuestionType questionType
     ) {
         return ApiResponse.ok(questionService.list(currentUser.userId(), resumeId, jobId, difficulty, questionType));
+    }
+
+    @GetMapping("/{questionId}/answer")
+    public ApiResponse<InterviewQuestionAnswerResponse> answer(CurrentUser currentUser,
+                                                               @PathVariable Long questionId) {
+        return ApiResponse.ok(questionService.answer(currentUser.userId(), questionId));
     }
 
     public record GenerateQuestionsRequest(@NotNull Long resumeId, @NotNull Long jobId) { }

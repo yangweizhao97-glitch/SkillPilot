@@ -74,7 +74,9 @@ public class InterviewReviewService {
         if (existing.isPresent()) return ReviewResponse.from(existing.get());
 
         List<InterviewAnswerEvaluation> evaluations = evaluationRepository
-                .findByUserIdAndSessionIdOrderByCreatedAtAscIdAsc(userId, sessionId);
+                .findByUserIdAndSessionIdOrderByCreatedAtAscIdAsc(userId, sessionId).stream()
+                .filter(this::countsTowardReview)
+                .toList();
         if (evaluations.isEmpty()) {
             throw new BusinessException("INTERVIEW_EVALUATIONS_REQUIRED",
                     "当前会话没有可用于复盘的回答评分", HttpStatus.CONFLICT);
@@ -204,6 +206,12 @@ public class InterviewReviewService {
                     Object value = evaluation.getResultJson().get(key);
                     return value instanceof List<?> list ? list.stream() : java.util.stream.Stream.empty();
                 }).map(String::valueOf).filter(value -> !value.isBlank()).distinct().limit(5).toList();
+    }
+
+    private boolean countsTowardReview(InterviewAnswerEvaluation evaluation) {
+        Object disposition = evaluation.getResultJson().get("answerDisposition");
+        return !InterviewAnswerDisposition.NO_ANSWER.name().equals(disposition)
+                && !InterviewAnswerDisposition.OFF_TOPIC.name().equals(disposition);
     }
 
     private InterviewSession requireSession(Long userId, Long sessionId) {

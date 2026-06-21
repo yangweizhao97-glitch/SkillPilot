@@ -4,7 +4,7 @@ import {
   Download, FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewMemory, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
+import { api, session, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
@@ -486,10 +486,30 @@ function ReportDetailView({ id, onBack }: { id: number; onBack: () => void }) {
     {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
     <section className="score-band"><div className="score"><strong>{match?.data?.matchScore ?? '--'}</strong><span>岗位匹配分</span></div><div><h3>{match?.data?.summary || match?.reason}</h3><div className="tag-list">{(match?.data?.strengths || []).map((item: string) => <span key={item}>{item}</span>)}</div></div></section>
     <section className="report-columns"><ReportSection title="简历亮点" items={analysis?.data?.highlights} missing={analysis?.reason} tone="positive" /><ReportSection title="优先改进" items={[...(analysis?.data?.suggestions || []), ...(match?.data?.suggestedResumeChanges || [])]} missing={analysis?.reason} tone="attention" /></section>
-    <section className="plain-section"><SectionTitle title="面试题" /><div className="question-list">{(questions?.items || []).map((item, index) => <article className="question" key={item.questionId}><div className="question-index">{String(index + 1).padStart(2, '0')}</div><div><div className="question-meta"><span>{item.questionType}</span><span>{item.difficulty}</span></div><h3>{item.question}</h3><ul>{item.expectedPoints?.map((point) => <li key={point}>{point}</li>)}</ul>{item.citations?.length ? <div className="citations">来源：{item.citations.join('、')}</div> : item.noCitationReason && <div className="citations muted">{item.noCitationReason}</div>}</div></article>)}{questions?.status === 'MISSING' && <Empty icon={<CircleAlert />} text={questions.reason || '面试题暂不可用'} />}</div></section>
+    <section className="plain-section"><SectionTitle title="面试题" /><div className="question-list">{(questions?.items || []).map((item, index) => <InterviewQuestionCard key={item.questionId} item={item} index={index} />)}{questions?.status === 'MISSING' && <Empty icon={<CircleAlert />} text={questions.reason || '面试题暂不可用'} />}</div></section>
     {plan && <LearningPlanPanel value={plan} />}
     <section className="citation-band"><div><FileText size={18} /><strong>引用来源</strong></div><div className="tag-list">{(report.citations || []).map((citation: string) => <code key={citation}>{citation}</code>)}{!report.citations?.length && <span>本报告未使用知识库引用</span>}</div></section>
   </>
+}
+
+function InterviewQuestionCard({ item, index }: { item: InterviewItem; index: number }) {
+  const [answer, setAnswer] = useState<InterviewQuestionAnswer | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  async function revealAnswer() {
+    setLoading(true); setError('')
+    try { setAnswer(await api.interviewQuestionAnswer(item.questionId)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '参考答案加载失败') }
+    finally { setLoading(false) }
+  }
+  return <article className="question"><div className="question-index">{String(index + 1).padStart(2, '0')}</div><div>
+    <div className="question-meta"><span>{item.questionType}</span><span>{item.difficulty}</span></div><h3>{item.question}</h3>
+    <ul>{item.expectedPoints?.map(point => <li key={point}>{point}</li>)}</ul>
+    {item.citations?.length ? <div className="citations">来源：{item.citations.join('、')}</div> : item.noCitationReason && <div className="citations muted">{item.noCitationReason}</div>}
+    {!answer && <button className="secondary small answer-toggle" disabled={loading} onClick={() => void revealAnswer()}>{loading ? '加载中…' : '查看参考答案'}</button>}
+    {error && <div className="answer-error">{error}</div>}
+    {answer && <details className="question-answer" open><summary>参考答案与评分要点</summary><ol>{answer.answerOutline.map(point => <li key={point}>{point}</li>)}</ol><p>{answer.referenceAnswer}</p><div>{answer.scoringRubric.map(rule => <span key={rule.criterion}>{rule.criterion} · {rule.weight}%</span>)}</div>{answer.commonMistakes.length > 0 && <small>常见误区：{answer.commonMistakes.join('；')}</small>}</details>}
+  </div></article>
 }
 
 function LearningPlanPanel({ value }: { value: LearningPlan }) {

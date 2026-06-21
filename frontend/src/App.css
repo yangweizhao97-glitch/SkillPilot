@@ -3,6 +3,15 @@
   --green: #18794e; --green-soft: #e6f4ec; --coral: #c7563b; --coral-soft: #fbeae5;
   --amber: #a15c00; --amber-soft: #fff1d6; --blue: #356b92; --blue-soft: #e7f0f6;
 }
+
+.answer-toggle { margin-top: 12px; }
+.answer-error { color: var(--danger); font-size: 10px; margin-top: 8px; }
+.question-answer { margin-top: 12px; padding: 12px; border: 1px solid var(--line); background: #f8faf8; border-radius: 5px; }
+.question-answer summary { cursor: pointer; font-size: 11px; font-weight: 700; }
+.question-answer p { color: #34443b; font-size: 11px; line-height: 1.7; }
+.question-answer > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.question-answer > div span { color: var(--blue); background: var(--blue-soft); padding: 3px 6px; border-radius: 3px; font-size: 9px; }
+.question-answer small { display: block; color: var(--muted); margin-top: 9px; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { letter-spacing: 0; }
 button { border: 0; }

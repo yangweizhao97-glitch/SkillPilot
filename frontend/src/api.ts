@@ -58,6 +58,11 @@ export type InterviewMemory = {
   available: boolean; sessionCount: number; answerCount: number; averageScore: number;
   strengths: string[]; improvementAreas: string[]; topics: string[]; summary: string; revision: number
 }
+export type InterviewQuestionAnswer = {
+  questionId: number; answerOutline: string[]; referenceAnswer: string;
+  scoringRubric: { criterion: string; weight: number }[]; commonMistakes: string[];
+  followUpCandidates: string[]; citations: string[]
+}
 export type TaskEventSnapshot = {
   task: CareerTask; logs: TaskLog[]; toolCalls: ToolCall[];
   resumedAfterEventId?: string; synchronizedAt: string
@@ -182,6 +187,8 @@ export const api = {
     request<InterviewMemory>(`/api/interview/memory?resumeId=${resumeId}&jobId=${jobId}`),
   clearInterviewMemory: (resumeId: number, jobId: number) =>
     request<void>(`/api/interview/memory?resumeId=${resumeId}&jobId=${jobId}`, { method: 'DELETE' }),
+  interviewQuestionAnswer: (questionId: number) =>
+    request<InterviewQuestionAnswer>(`/api/interview/questions/${questionId}/answer`),
   createTask: (resumeId: number, jobId: number) => request<CareerTask>('/api/career-tasks', {
     method: 'POST', body: JSON.stringify({ resumeId, jobId })
   }),

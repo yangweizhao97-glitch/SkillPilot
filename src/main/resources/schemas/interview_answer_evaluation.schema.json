@@ -26,6 +26,9 @@
     "improvements": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "maxItems": 5},
     "improvedAnswer": {"type": "string", "minLength": 1},
     "followUp": {"type": "boolean"},
-    "followUpQuestion": {"type": "string"}
+    "followUpQuestion": {"type": "string"},
+    "answerDisposition": {"type": "string", "enum": ["NO_ANSWER", "OFF_TOPIC", "PARTIAL", "INCORRECT", "COMPLETE"]},
+    "nextAction": {"type": "string", "enum": ["CLARIFY", "DEEPEN", "CHALLENGE", "CORRECT", "NEXT"]},
+    "missingPoints": {"type": "array", "maxItems": 8, "items": {"type": "string", "minLength": 1}}
   }
 }
