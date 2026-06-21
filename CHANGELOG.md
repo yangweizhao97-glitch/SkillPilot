@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.6 - 2026-06-21
+
+- Added controlled Agent handoffs between active career-analysis stages and the final report aggregator.
+- Added an explicit source-to-target allowlist, forward-only routing, maximum-depth enforcement, and loop detection.
+- Kept handoff payloads task-scoped and persisted-result based instead of copying resume, JD, or model content into events.
+- Added truthful handoff started, completed, and rejected events to the existing recoverable task stream.
+- Skipped handoffs for disabled stages and workflows without a final report, preserving partial-task behavior.
+- Added policy, routing, lifecycle, partial-workflow, frontend, and full workflow regression coverage.
+
 ## 0.2.5 - 2026-06-21
 
 - Added an optional MCP Streamable HTTP client with initialization, discovery, session, JSON, and SSE response support.

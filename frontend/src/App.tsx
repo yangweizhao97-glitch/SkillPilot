@@ -437,8 +437,9 @@ function TaskDetail({ id, onBack, onChanged }: { id: number; onBack: () => void;
       const stepTools = log.status === 'STEP_STARTED'
         ? tools.filter(tool => tool.agentName === log.agentName)
         : []
-      const completed = ['STEP_COMPLETED', 'TASK_COMPLETED'].includes(log.status); const failed = log.status === 'STEP_FAILED'
-      return <div className="timeline-item" key={log.logId}><div className="timeline-dot">{completed ? <Check /> : failed ? <X /> : <Clock3 />}</div><div><div className="log-heading"><strong>{statusLabel[log.stepName] || log.stepName}</strong><span>{log.durationMs ? `${log.durationMs} ms` : '执行中'}</span></div><p>{log.outputSummary || log.errorMessage || log.agentName}</p>{stepTools.length > 0 && <div className="tool-list">{stepTools.map(tool => <ToolCard key={tool.toolCallId} tool={tool} />)}</div>}<div className="log-meta"><code>{log.agentName}</code>{log.totalTokens != null && <span>{log.totalTokens} tokens</span>}<time>{formatDate(log.updatedAt)}</time></div></div>{index < logs.length - 1 && <span className="timeline-line" />}</div>
+      const completed = ['STEP_COMPLETED', 'HANDOFF_COMPLETED', 'TASK_COMPLETED'].includes(log.status); const failed = ['STEP_FAILED', 'HANDOFF_REJECTED'].includes(log.status)
+      const timing = log.durationMs != null ? `${log.durationMs} ms` : completed || failed ? '已记录' : '执行中'
+      return <div className="timeline-item" key={log.logId}><div className="timeline-dot">{completed ? <Check /> : failed ? <X /> : <Clock3 />}</div><div><div className="log-heading"><strong>{log.status.startsWith('HANDOFF_') ? 'Agent 交接' : statusLabel[log.stepName] || log.stepName}</strong><span>{timing}</span></div><p>{log.outputSummary || log.errorMessage || log.agentName}</p>{stepTools.length > 0 && <div className="tool-list">{stepTools.map(tool => <ToolCard key={tool.toolCallId} tool={tool} />)}</div>}<div className="log-meta"><code>{log.agentName}</code>{log.totalTokens != null && <span>{log.totalTokens} tokens</span>}<time>{formatDate(log.updatedAt)}</time></div></div>{index < logs.length - 1 && <span className="timeline-line" />}</div>
     })}{!logs.length && <Empty icon={<Activity />} text="等待 Agent 开始执行" />}</div></section>
     {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
   </>

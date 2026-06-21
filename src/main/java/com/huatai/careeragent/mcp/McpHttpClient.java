@@ -87,7 +87,7 @@ public class McpHttpClient implements McpClient {
         JsonNode initialized = rpc("initialize", Map.of(
                 "protocolVersion", properties.getProtocolVersion(),
                 "capabilities", Map.of(),
-                "clientInfo", Map.of("name", "career-agent", "version", "0.2.5")
+                "clientInfo", Map.of("name", "career-agent", "version", "0.2.6")
         ));
         String negotiated = initialized.path("protocolVersion").asText();
         if (!properties.getProtocolVersion().equals(negotiated)) {

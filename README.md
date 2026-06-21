@@ -95,6 +95,8 @@ The complete template is [.env.example](.env.example). Important variables:
 | `MCP_ENABLED` | Enable the optional MCP Streamable HTTP adapter | `false` |
 | `MCP_ENDPOINT` | Trusted MCP server endpoint | Empty |
 | `MCP_ALLOWED_TOOLS` | Explicit comma-separated remote tool allowlist | Empty |
+| `AGENT_HANDOFF_ENABLED` | Emit and enforce controlled Agent handoffs | `true` |
+| `AGENT_HANDOFF_MAX_DEPTH` | Maximum handoffs in one career task | `4` |
 
 MCP remains disabled unless an endpoint and explicit tool allowlist are configured. Remote tools are invoked through the same Tool Registry as local tools, so task ownership, agent permissions, timing, failure status, and redacted audit logs remain enforced. The adapter supports JSON and SSE Streamable HTTP responses and does not fall back to an unapproved remote tool.
 

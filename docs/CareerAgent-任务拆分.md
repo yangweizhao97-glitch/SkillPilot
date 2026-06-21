@@ -1010,6 +1010,23 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 16 完成
 
+## Phase 18：受控多 Agent Handoff
+
+**Description:** 在固定职业工作流内建立可审计的 Agent 交接合同。交接只传递同一任务的身份与持久化结果引用，由本地策略决定目标，不允许模型任意选择 Agent、回跳或形成循环。
+
+**Acceptance criteria:**
+- [x] 只在实际启用的 Agent 阶段之间交接，跳过未执行步骤和无最终报告的部分任务。
+- [x] 交接目标使用显式 source-to-target 白名单，并强制工作流向前推进。
+- [x] 使用最大深度与已访问 Agent 集合阻止无限交接和循环路由。
+- [x] handoff 不复制简历、JD、知识库或模型原文，只引用同一个 `taskId`/`traceId` 下的持久化结果。
+- [x] 产生 `HANDOFF_STARTED`、`HANDOFF_COMPLETED`、`HANDOFF_REJECTED` 真实事件并进入现有 SSE 断线恢复快照。
+- [x] 前端按事件到达顺序显示 Agent 交接，不预先展示未发生的目标 Agent。
+- [x] 白名单、逆向路由、未知 Agent、循环、深度、完整工作流和部分工作流测试通过。
+
+**Release target:** `v0.2.6`
+
+**Dependencies:** Phase 17 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

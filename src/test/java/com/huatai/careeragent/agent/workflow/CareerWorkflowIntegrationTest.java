@@ -23,6 +23,7 @@ import com.huatai.careeragent.task.AgentTask;
 import com.huatai.careeragent.task.AgentTaskRepository;
 import com.huatai.careeragent.task.WorkflowStatus;
 import com.huatai.careeragent.task.log.AgentExecutionLogRepository;
+import com.huatai.careeragent.task.log.ExecutionLogStatus;
 import com.huatai.careeragent.user.User;
 import com.huatai.careeragent.user.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -45,6 +46,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -123,9 +125,19 @@ class CareerWorkflowIntegrationTest {
         assertThat(interviewQuestionRepository.findAll()).hasSize(2);
         assertThat(finalReportRepository.findAll()).hasSize(1);
         assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(12);
-        assertThat(executionLogRepository.findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(fullTaskId, completed.getUserId()))
+        var executionLogs = executionLogRepository
+                .findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(fullTaskId, completed.getUserId());
+        assertThat(executionLogs)
                 .extracting(log -> log.getAgentName())
                 .contains("JOB_MATCH_AGENT", "RESUME_ANALYSIS_AGENT", "INTERVIEW_QUESTION_AGENT");
+        assertThat(executionLogs.stream()
+                .filter(log -> log.getStatus() == ExecutionLogStatus.HANDOFF_COMPLETED))
+                .extracting(log -> log.getOutputSummary())
+                .containsExactly(
+                        "Handoff completed: JOB_MATCH_AGENT -> RESUME_ANALYSIS_AGENT",
+                        "Handoff completed: RESUME_ANALYSIS_AGENT -> INTERVIEW_QUESTION_AGENT",
+                        "Handoff completed: INTERVIEW_QUESTION_AGENT -> FINAL_REPORT_AGENT"
+                );
 
         String reportId = finalReportRepository.findAll().getFirst().getId().toString();
         mockMvc.perform(get("/api/reports").header("Authorization", "Bearer " + owner.token()))
@@ -258,6 +270,8 @@ class CareerWorkflowIntegrationTest {
         awaitStatus(taskId, WorkflowStatus.SUCCESS);
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(finalReportRepository.findAll()).isEmpty();
+        assertThat(executionLogRepository.findAll())
+                .noneMatch(log -> log.getStatus() == ExecutionLogStatus.HANDOFF_COMPLETED);
     }
 
     @Test
@@ -328,7 +342,8 @@ class CareerWorkflowIntegrationTest {
         mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(13));
+                .andExpect(jsonPath("$.data.items.length()").value(19))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'HANDOFF_COMPLETED')]").value(hasSize(3)));
         mockMvc.perform(get("/api/reports").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].status").value("COMPLETE"));

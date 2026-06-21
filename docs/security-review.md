@@ -40,3 +40,5 @@ Review date: 2026-06-21
 - Rule-based detection cannot recognize every semantic attack; production telemetry should be reviewed and rules/versioned as attack patterns evolve.
 - MCP is disabled by default. Operators must configure a trusted HTTP(S) endpoint and explicit tool/Agent allowlists; discovered server tools never grant authority by themselves.
 - MCP calls retain local task ownership checks and redacted Tool Registry audit logs. Bearer tokens, remote content, and structured results are not persisted in clear text.
+- Agent handoffs are forward-only and use a local source-to-target allowlist, maximum depth, and visited-Agent loop detection. Models cannot name arbitrary handoff targets.
+- Handoff events contain task/trace identity, Agent names, depth, and route outcome only; resume, JD, retrieved context, and model output remain in their task-scoped stores.

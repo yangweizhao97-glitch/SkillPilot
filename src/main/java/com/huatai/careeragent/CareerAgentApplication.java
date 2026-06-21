@@ -7,6 +7,7 @@ import com.huatai.careeragent.knowledge.retrieval.RetrievalProperties;
 import com.huatai.careeragent.llm.ModelConfig;
 import com.huatai.careeragent.agent.core.AgentProperties;
 import com.huatai.careeragent.mcp.McpProperties;
+import com.huatai.careeragent.agent.handoff.HandoffProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -19,6 +20,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 		RetrievalProperties.class,
 		ModelConfig.class,
 		AgentProperties.class,
+		HandoffProperties.class,
 		McpProperties.class
 })
 public class CareerAgentApplication {

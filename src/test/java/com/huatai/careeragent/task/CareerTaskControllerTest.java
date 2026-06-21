@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -120,13 +121,14 @@ class CareerTaskControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.taskId").value(taskId))
                 .andExpect(jsonPath("$.data.traceId").value(completed.getTraceId()))
-                .andExpect(jsonPath("$.data.items.length()").value(7))
+                .andExpect(jsonPath("$.data.items.length()").value(13))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'HANDOFF_COMPLETED')]").value(hasSize(3)))
                 .andExpect(jsonPath("$.data.items[0].workflowStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.items[0].progress").value(0))
-                .andExpect(jsonPath("$.data.items[6].workflowStatus").value("SUCCESS"))
-                .andExpect(jsonPath("$.data.items[6].progress").value(100))
-                .andExpect(jsonPath("$.data.items[6].traceId").value(completed.getTraceId()))
-                .andExpect(jsonPath("$.data.items[6].updatedAt").isNotEmpty());
+                .andExpect(jsonPath("$.data.items[12].workflowStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[12].progress").value(100))
+                .andExpect(jsonPath("$.data.items[12].traceId").value(completed.getTraceId()))
+                .andExpect(jsonPath("$.data.items[12].updatedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/career-tasks/{taskId}", taskId)
                         .header("Authorization", "Bearer " + otherToken))
