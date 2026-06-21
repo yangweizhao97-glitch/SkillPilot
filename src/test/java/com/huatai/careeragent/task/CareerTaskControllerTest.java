@@ -28,10 +28,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -197,6 +202,45 @@ class CareerTaskControllerTest {
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("INVALID_ENABLED_STEP"));
+    }
+
+    @Test
+    void streamsPersistedTaskEventsAndResynchronizesAfterReconnect() throws Exception {
+        AuthenticatedResources owner = createAuthenticatedResources();
+        String otherToken = registerAndLogin().token();
+        doAnswer(invocation -> {
+            Thread.sleep(80);
+            return null;
+        }).when(stepHandler).execute(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(WorkflowStatus.class));
+
+        String response = mockMvc.perform(post("/api/career-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"resumeId":%d,"jobId":%d}
+                                """.formatted(owner.resumeId(), owner.jobId()))
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long taskId = objectMapper.readTree(response).path("data").path("taskId").asLong();
+
+        var stream = mockMvc.perform(get("/api/career-tasks/{taskId}/events", taskId)
+                        .header("Authorization", "Bearer " + owner.token())
+                        .header("Last-Event-ID", "step-previous"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(stream))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(content().string(containsString("event:TASK_SNAPSHOT")))
+                .andExpect(content().string(containsString("\"resumedAfterEventId\":\"step-previous\"")))
+                .andExpect(content().string(containsString("event:STEP_EVENT")))
+                .andExpect(content().string(containsString("event:TASK_STREAM_COMPLETED")));
+
+        mockMvc.perform(get("/api/career-tasks/{taskId}/events", taskId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("CAREER_TASK_NOT_FOUND"));
     }
 
     private AuthenticatedResources createAuthenticatedResources() throws Exception {

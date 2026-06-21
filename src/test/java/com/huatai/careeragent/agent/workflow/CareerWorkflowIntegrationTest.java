@@ -44,13 +44,17 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 
 @SpringBootTest(properties = {
         "career-agent.agent.initial-retry-delay=0ms",
@@ -254,6 +258,32 @@ class CareerWorkflowIntegrationTest {
         awaitStatus(taskId, WorkflowStatus.SUCCESS);
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(finalReportRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void streamsRealToolCallUpdatesFromStartedToCompleted() throws Exception {
+        Resources owner = createResources();
+        when(llmClient.complete(any())).thenAnswer(invocation -> {
+            Thread.sleep(180);
+            LlmRequest request = invocation.getArgument(0);
+            String system = request.messages().getFirst().content();
+            if (system.contains("career matching")) return response(jobMatchJson());
+            if (system.contains("resume reviewer")) return response(resumeAnalysisJson());
+            return response(interviewQuestionsJson());
+        });
+
+        Long taskId = createTask(owner.token(), owner.resumeId(), owner.jobId(), null);
+        var stream = mockMvc.perform(get("/api/career-tasks/{taskId}/events", taskId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(stream))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("event:TASK_SNAPSHOT")))
+                .andExpect(content().string(containsString("event:TOOL_EVENT")))
+                .andExpect(content().string(containsString("TOOL_COMPLETED")))
+                .andExpect(content().string(containsString("event:TASK_STREAM_COMPLETED")));
     }
 
     @Test

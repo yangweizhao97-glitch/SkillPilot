@@ -10,6 +10,7 @@
 6. Interview SSE integration tests cover authenticated async dispatch and the answer-received, evaluating, streaming, and completed event lifecycle.
 7. Answer-evaluation tests cover score bounds, fixed weighted dimensions, message-level binding, user isolation, persistence, and SSE completion events.
 8. Workflow-engine contract tests cover Spring delegation, task/trace propagation, invalid LangGraph plans, and configurable fallback.
+9. Career-task SSE tests cover authenticated snapshots, persisted step events, reconnect cursors, terminal completion, user isolation, and frontend event-ID parsing.
 
 External model calls must always be mocked in automated tests. PostgreSQL with pgvector is a real test dependency.
 

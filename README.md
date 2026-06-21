@@ -90,7 +90,7 @@ The complete template is [.env.example](.env.example). Important variables:
 - Authentication: `/api/auth/register`, `/api/auth/login`, `/api/auth/me`
 - Files and knowledge: `/api/files`, `/api/documents/{id}/chunks`, `/api/documents/{id}/embeddings`
 - Resources: `/api/resumes`, `/api/jobs`
-- Workflow: `/api/career-tasks`, `/api/career-tasks/{id}/logs`
+- Workflow: `/api/career-tasks`, `/api/career-tasks/{id}/logs`, `/api/career-tasks/{id}/events`
 - Reports: `/api/reports`, `/api/reports/{id}`
 - Interactive interview: `/api/interview/sessions`, `/api/interview/sessions/{id}/answers/stream`
 

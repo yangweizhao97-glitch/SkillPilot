@@ -35,6 +35,10 @@ export type InterviewSessionSummary = {
   currentQuestion: number; totalQuestions: number; createdAt: string; updatedAt: string; finishedAt?: string
 }
 export type InterviewSession = InterviewSessionSummary & { messages: InterviewMessage[]; evaluations: InterviewEvaluation[] }
+export type TaskEventSnapshot = {
+  task: CareerTask; logs: TaskLog[]; toolCalls: ToolCall[];
+  resumedAfterEventId?: string; synchronizedAt: string
+}
 
 type Envelope<T> = { success: boolean; data: T; error?: { code: string; message: string }; traceId?: string }
 
@@ -70,6 +74,32 @@ export const api = {
   tasks: () => request<PageData<CareerTask>>('/api/career-tasks?pageSize=50'),
   task: (id: number) => request<CareerTask>(`/api/career-tasks/${id}`),
   logs: (id: number) => request<{ taskId: number; traceId: string; items: TaskLog[]; toolCalls: ToolCall[] }>(`/api/career-tasks/${id}/logs`),
+  streamTaskEvents: async (id: number, lastEventId: string | undefined,
+    onEvent: (event: string, data: Record<string, unknown>, eventId?: string) => void,
+    signal: AbortSignal) => {
+    const headers: Record<string, string> = { Authorization: `Bearer ${session.get() || ''}` }
+    if (lastEventId) headers['Last-Event-ID'] = lastEventId
+    const response = await fetch(`/api/career-tasks/${id}/events`, { headers, signal })
+    if (!response.ok || !response.body) {
+      if (response.status === 401) session.clear()
+      throw new Error('任务事件流连接失败')
+    }
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n'); buffer = frames.pop() || ''
+      for (const frame of frames) {
+        let event = 'message'; let data = ''; let eventId: string | undefined
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('id:')) eventId = line.slice(3).trim()
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          if (line.startsWith('data:')) data += line.slice(5).trim()
+        }
+        if (data) onEvent(event, JSON.parse(data) as Record<string, unknown>, eventId)
+      }
+    }
+  },
   retryTask: (id: number) => request<CareerTask>(`/api/career-tasks/${id}/retry`, { method: 'POST' }),
   reports: () => request<ReportSummary[]>('/api/reports'),
   report: (id: number) => request<ReportDetail>(`/api/reports/${id}`),

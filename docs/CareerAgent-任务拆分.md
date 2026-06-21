@@ -928,6 +928,22 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 11 完成
 
+## Phase 13：职业任务 SSE 与断线恢复
+
+**Description:** 用后端真实任务、步骤和工具日志驱动任务详情，替代固定间隔轮询；连接中断后通过持久化快照恢复一致状态。
+
+**Acceptance criteria:**
+- [x] 提供带用户隔离的 `GET /api/career-tasks/{taskId}/events`。
+- [x] 首次连接与重连先推送数据库完整快照，再推送任务、步骤和工具增量事件。
+- [x] 工具事件按 `toolCallId` 合并，事件携带稳定 SSE ID 和心跳。
+- [x] 前端回传 `Last-Event-ID`，按 ID 去重，并使用有上限的指数退避重连。
+- [x] 终态主动完成事件流，异常时仍可通过 REST 快照降级恢复。
+- [x] 完整后端与前端验证通过。
+
+**Release target:** `v0.2.1`
+
+**Dependencies:** Phase 12 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

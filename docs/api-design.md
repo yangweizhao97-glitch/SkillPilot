@@ -413,11 +413,13 @@ Response:
 }
 ```
 
-当前职业分析进度使用该接口轮询。任务事件流仍是后续增强项：
+职业分析可使用该接口读取当前快照；任务详情默认使用 SSE 事件流：
 
 ```http
 GET /api/career-tasks/{taskId}/events
 ```
+
+连接必须携带 Bearer Token。首次连接和重连都会先收到 `TASK_SNAPSHOT`，之后按实际发生顺序推送 `TASK_UPDATED`、`STEP_EVENT`、`TOOL_EVENT`、`HEARTBEAT` 和 `TASK_STREAM_COMPLETED`。客户端保存 SSE `id`，重连时通过 `Last-Event-ID` 回传；后端以数据库快照重新同步，再继续发送增量事件。
 
 ### Get Task Logs
 

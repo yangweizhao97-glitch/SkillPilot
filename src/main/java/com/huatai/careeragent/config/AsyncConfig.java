@@ -40,4 +40,19 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean(name = "careerTaskStreamExecutor")
+    public Executor careerTaskStreamExecutor(
+            @Value("${career-agent.workflow.stream-thread-pool-size:8}") int poolSize
+    ) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(poolSize);
+        executor.setMaxPoolSize(poolSize);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("career-task-stream-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        executor.initialize();
+        return executor;
+    }
 }

@@ -4,7 +4,7 @@ import {
   FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskLog, type ToolCall, type User } from './api'
+import { api, session, type CareerTask, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
@@ -350,7 +350,39 @@ function TaskList({ tasks, onSelect }: { tasks: CareerTask[]; onSelect: (id: num
 function TaskDetail({ id, onBack, onChanged }: { id: number; onBack: () => void; onChanged: () => Promise<void> }) {
   const [task, setTask] = useState<CareerTask | null>(null); const [logs, setLogs] = useState<TaskLog[]>([]); const [tools, setTools] = useState<ToolCall[]>([]); const [error, setError] = useState('')
   const load = useCallback(async () => { try { const [next, logData] = await Promise.all([api.task(id), api.logs(id)]); setTask(next); setLogs(logData.items); setTools(logData.toolCalls || []) } catch (reason) { setError(reason instanceof Error ? reason.message : '加载失败') } }, [id])
-  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load]); useEffect(() => { if (!task || ['SUCCESS', 'FAILED'].includes(task.status)) return; const timer = setInterval(() => void load(), 1500); return () => clearInterval(timer) }, [task, load])
+  useEffect(() => {
+    const controller = new AbortController(); let disposed = false; let terminal = false; let lastEventId: string | undefined; let retryTimer = 0; let retryDelay = 500
+    const upsertLog = (item: TaskLog) => setLogs(current => current.some(log => log.logId === item.logId) ? current : [...current, item])
+    const upsertTool = (item: ToolCall) => setTools(current => current.some(tool => tool.toolCallId === item.toolCallId)
+      ? current.map(tool => tool.toolCallId === item.toolCallId ? item : tool) : [...current, item])
+    const connect = async () => {
+      try {
+        await api.streamTaskEvents(id, lastEventId, (event, data, eventId) => {
+          if (eventId) lastEventId = eventId
+          if (event === 'TASK_SNAPSHOT') {
+            const snapshot = data as unknown as TaskEventSnapshot
+            setTask(snapshot.task); setLogs(snapshot.logs); setTools(snapshot.toolCalls || [])
+            terminal = ['SUCCESS', 'FAILED'].includes(snapshot.task.status)
+          } else if (event === 'TASK_UPDATED' || event === 'TASK_STREAM_COMPLETED') {
+            const next = data as unknown as CareerTask; setTask(next)
+            terminal = ['SUCCESS', 'FAILED'].includes(next.status)
+          } else if (event === 'STEP_EVENT') upsertLog(data as unknown as TaskLog)
+          else if (event === 'TOOL_EVENT') upsertTool(data as unknown as ToolCall)
+          setError(''); retryDelay = 500
+        }, controller.signal)
+      } catch (reason) {
+        if (!disposed && !(reason instanceof DOMException && reason.name === 'AbortError')) {
+          setError('实时连接中断，正在恢复…'); await load()
+        }
+      }
+      if (!disposed && !terminal) {
+        retryTimer = window.setTimeout(() => void connect(), retryDelay)
+        retryDelay = Math.min(retryDelay * 2, 8000)
+      }
+    }
+    retryTimer = window.setTimeout(() => { void load(); void connect() }, 0)
+    return () => { disposed = true; controller.abort(); window.clearTimeout(retryTimer) }
+  }, [id, load])
   if (!task) return <div className="loading-line">正在加载任务...</div>
   return <><button className="back-link" onClick={onBack}><ArrowLeft size={16} />返回任务列表</button>
     <section className="task-head"><div><Status status={task.status} /><h2>任务 #{task.taskId}</h2><code>{task.traceId}</code></div><div className="progress-ring" style={{ '--progress': `${task.progress * 3.6}deg` } as CSSProperties}><span>{task.progress}%</span></div></section>

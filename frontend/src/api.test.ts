@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, session } from './api'
 
 describe('API client', () => {
   beforeEach(() => localStorage.clear())
+  afterEach(() => vi.restoreAllMocks())
 
   it('adds the stored bearer token and unwraps successful responses', async () => {
     session.set('test-token')
@@ -28,5 +29,27 @@ describe('API client', () => {
     await expect(api.me()).rejects.toThrow('Unauthorized')
     expect(session.get()).toBeNull()
   })
-})
 
+  it('parses task SSE event ids and sends the reconnect cursor', async () => {
+    session.set('stream-token')
+    const body = [
+      'id:snapshot-1', 'event:TASK_SNAPSHOT', 'data:{"task":{"taskId":1}}', '',
+      'id:step-9', 'event:STEP_EVENT', 'data:{"logId":9}', '', '',
+    ].join('\n')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    const events: Array<{ event: string; id?: string }> = []
+
+    await api.streamTaskEvents(1, 'step-previous', (event, _data, id) => events.push({ event, id }),
+      new AbortController().signal)
+
+    expect(events).toEqual([
+      { event: 'TASK_SNAPSHOT', id: 'snapshot-1' },
+      { event: 'STEP_EVENT', id: 'step-9' },
+    ])
+    const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer stream-token')
+    expect(headers['Last-Event-ID']).toBe('step-previous')
+  })
+})

@@ -15,16 +15,22 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/career-tasks")
 public class CareerTaskController {
     private final CareerTaskService careerTaskService;
     private final TaskLogService taskLogService;
+    private final CareerTaskEventStreamService eventStreamService;
 
-    public CareerTaskController(CareerTaskService careerTaskService, TaskLogService taskLogService) {
+    public CareerTaskController(CareerTaskService careerTaskService, TaskLogService taskLogService,
+                                CareerTaskEventStreamService eventStreamService) {
         this.careerTaskService = careerTaskService;
         this.taskLogService = taskLogService;
+        this.eventStreamService = eventStreamService;
     }
 
     @PostMapping
@@ -52,6 +58,12 @@ public class CareerTaskController {
     @GetMapping("/{taskId}/logs")
     public ApiResponse<TaskLogResponse> logs(CurrentUser currentUser, @PathVariable Long taskId) {
         return ApiResponse.ok(taskLogService.list(currentUser.userId(), taskId));
+    }
+
+    @GetMapping(value = "/{taskId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter events(CurrentUser currentUser, @PathVariable Long taskId,
+                             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
+        return eventStreamService.open(currentUser.userId(), taskId, lastEventId);
     }
 
     @PostMapping("/{taskId}/retry")
