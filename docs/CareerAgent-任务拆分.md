@@ -1027,6 +1027,23 @@ docker compose up -d postgres redis minio
 
 **Dependencies:** Phase 17 完成
 
+## Phase 19：长会话面试记忆
+
+**Description:** 为模拟面试增加有界、可追溯、可删除的跨会话记忆。记忆从已通过 Schema 校验的评分结果提炼，不保存候选人回答副本，并只在同一用户、简历和岗位范围内复用。
+
+**Acceptance criteria:**
+- [x] 每份记忆绑定 `userId`、`sessionId`、`resumeId` 和 `jobId`，数据库约束保证一个会话一份快照。
+- [x] 记忆只包含回答数量、平均分、主题、优势和改进项，不复制回答、简历、JD 或 Prompt 原文。
+- [x] 评分与流式追问使用同一简历/岗位最近三场会话的有界记忆上下文。
+- [x] 记忆内容继续经过 `LlmRequest.secured` 的 Prompt Injection 策略。
+- [x] 每类摘要最多保留六项且单项限制长度，避免历史无限进入上下文。
+- [x] 提供带用户隔离的记忆读取和清除 API，前端显示摘要并允许用户主动清除。
+- [x] 跨会话复用、原始回答排除、越权、清除、迁移和前端构建测试通过。
+
+**Release target:** `v0.2.7`
+
+**Dependencies:** Phase 18 完成
+
 ## Checkpoints
 
 ### Checkpoint A：Phase 0-1 完成

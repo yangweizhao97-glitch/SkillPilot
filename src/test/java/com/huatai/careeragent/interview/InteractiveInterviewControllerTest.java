@@ -31,9 +31,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -42,6 +45,7 @@ class InteractiveInterviewControllerTest {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private InterviewMessageRepository messageRepository;
     @Autowired private InterviewSessionRepository sessionRepository;
+    @Autowired private InterviewSessionMemoryRepository memoryRepository;
     @Autowired private InterviewQuestionRepository questionRepository;
     @Autowired private JobRepository jobRepository;
     @Autowired private ResumeRepository resumeRepository;
@@ -52,6 +56,7 @@ class InteractiveInterviewControllerTest {
 
     @AfterEach
     void cleanUp() {
+        memoryRepository.deleteAll();
         messageRepository.deleteAll();
         sessionRepository.deleteAll();
         questionRepository.deleteAll();
@@ -115,6 +120,25 @@ class InteractiveInterviewControllerTest {
                 .andExpect(content().string(containsString("event:INTERVIEW_SCORE_COMPLETED")))
                 .andExpect(content().string(containsString("event:INTERVIEW_FOLLOWUP_STREAMING")))
                 .andExpect(content().string(containsString("event:INTERVIEW_FEEDBACK_COMPLETED")));
+
+        mockMvc.perform(get("/api/interview/memory")
+                        .param("resumeId", resume.getId().toString())
+                        .param("jobId", job.getId().toString())
+                        .header("Authorization", "Bearer " + authenticated.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true))
+                .andExpect(jsonPath("$.data.answerCount").value(1));
+        mockMvc.perform(delete("/api/interview/memory")
+                        .param("resumeId", resume.getId().toString())
+                        .param("jobId", job.getId().toString())
+                        .header("Authorization", "Bearer " + authenticated.token()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/interview/memory")
+                        .param("resumeId", resume.getId().toString())
+                        .param("jobId", job.getId().toString())
+                        .header("Authorization", "Bearer " + authenticated.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(false));
     }
 
     private Authenticated registerAndLogin() throws Exception {

@@ -41,6 +41,7 @@ public class InteractiveInterviewService {
     private final LlmClient llmClient;
     private final SchemaRepairService schemaRepairService;
     private final ObjectMapper objectMapper;
+    private final InterviewMemoryService memoryService;
 
     public InteractiveInterviewService(InterviewSessionRepository sessionRepository,
                                        InterviewMessageRepository messageRepository,
@@ -48,7 +49,7 @@ public class InteractiveInterviewService {
                                        InterviewQuestionRepository questionRepository,
                                        ResumeRepository resumeRepository, JobRepository jobRepository,
                                        LlmClient llmClient, SchemaRepairService schemaRepairService,
-                                       ObjectMapper objectMapper) {
+                                       ObjectMapper objectMapper, InterviewMemoryService memoryService) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.evaluationRepository = evaluationRepository;
@@ -58,6 +59,7 @@ public class InteractiveInterviewService {
         this.llmClient = llmClient;
         this.schemaRepairService = schemaRepairService;
         this.objectMapper = objectMapper;
+        this.memoryService = memoryService;
     }
 
     @Transactional
@@ -159,7 +161,9 @@ public class InteractiveInterviewService {
             String context = objectMapper.writeValueAsString(Map.of(
                     "question", question.getQuestionText(),
                     "expectedPoints", question.getExpectedPoints(),
-                    "candidateAnswer", answer
+                    "candidateAnswer", answer,
+                    "interviewMemory", memoryService.get(
+                            session.getUserId(), session.getResumeId(), session.getJobId()).promptContext()
             ));
             String traceId = "interview_" + session.getId() + "_" + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.complete(LlmRequest.secured(
@@ -177,6 +181,7 @@ public class InteractiveInterviewService {
                     session.getUserId(), session.getId(), question.getId(), candidateMessage.getId(),
                     overallScore, result
             ));
+            memoryService.record(session, question, overallScore, result);
             return new AnswerEvaluationDecision(validated.path("followUp").asBoolean(false),
                     validated.path("followUpQuestion").asText(""), result);
         } catch (JsonProcessingException exception) {
@@ -196,7 +201,9 @@ public class InteractiveInterviewService {
                     "question", question.getQuestionText(),
                     "expectedPoints", question.getExpectedPoints(),
                     "candidateAnswer", answer,
-                    "evaluation", decision.evaluation()
+                    "evaluation", decision.evaluation(),
+                    "interviewMemory", memoryService.get(
+                            session.getUserId(), session.getResumeId(), session.getJobId()).promptContext()
             ));
             String traceId = "interview_followup_" + session.getId() + "_"
                     + UUID.randomUUID().toString().replace("-", "");

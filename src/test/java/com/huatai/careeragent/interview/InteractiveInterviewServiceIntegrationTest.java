@@ -7,6 +7,7 @@ import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.llm.LlmClient;
+import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
 import com.huatai.careeragent.resume.Resume;
 import com.huatai.careeragent.resume.ResumeRepository;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doReturn;
 
 @SpringBootTest
 class InteractiveInterviewServiceIntegrationTest {
@@ -36,6 +39,8 @@ class InteractiveInterviewServiceIntegrationTest {
     @Autowired private InterviewAnswerEvaluationRepository evaluationRepository;
     @Autowired private InterviewMessageRepository messageRepository;
     @Autowired private InterviewSessionRepository sessionRepository;
+    @Autowired private InterviewSessionMemoryRepository memoryRepository;
+    @Autowired private InterviewMemoryService memoryService;
     @Autowired private InterviewQuestionRepository questionRepository;
     @Autowired private JobRepository jobRepository;
     @Autowired private ResumeRepository resumeRepository;
@@ -47,6 +52,7 @@ class InteractiveInterviewServiceIntegrationTest {
     @AfterEach
     void cleanUp() {
         evaluationRepository.deleteAll();
+        memoryRepository.deleteAll();
         messageRepository.deleteAll();
         sessionRepository.deleteAll();
         questionRepository.deleteAll();
@@ -85,24 +91,52 @@ class InteractiveInterviewServiceIntegrationTest {
         assertThat(followedUp.evaluations()).hasSize(1);
         assertThat(followedUp.evaluations().getFirst().overallScore()).isEqualTo(72);
         assertThat(followedUp.evaluations().getFirst().answerMessageId()).isNotNull();
+        var firstMemory = memoryService.get(user.getId(), resume.getId(), job.getId());
+        assertThat(firstMemory.available()).isTrue();
+        assertThat(firstMemory.answerCount()).isEqualTo(1);
+        assertThat(firstMemory.averageScore()).isEqualTo(72);
+        assertThat(firstMemory.strengths()).contains("抓住了一致性目标");
+        assertThat(firstMemory.improvementAreas()).contains("补充传播行为和隔离级别");
 
         var advanced = service.answer(user.getId(), created.sessionId(), "支持 REQUIRED 和 REQUIRES_NEW。");
         assertThat(advanced.currentQuestion()).isEqualTo(2);
         assertThat(advanced.messages().getLast().content()).isEqualTo("How would you design a task queue?");
 
         assertThat(advanced.evaluations()).hasSize(2);
+        assertThat(memoryService.get(user.getId(), resume.getId(), job.getId()).answerCount()).isEqualTo(2);
         when(llmClient.complete(any())).thenThrow(new IllegalStateException("model unavailable"));
         var degraded = service.answer(user.getId(), created.sessionId(), "使用持久化队列并由工作线程消费。");
         assertThat(degraded.status()).isEqualTo(InterviewSessionStatus.FINISHED);
         assertThat(degraded.evaluations()).hasSize(2);
         assertThat(degraded.messages()).extracting(InteractiveInterviewService.InterviewMessageResponse::content)
                 .contains("使用持久化队列并由工作线程消费。");
+        doReturn(new LlmResponse(
+                evaluationJson("请补充一个生产案例。"),
+                "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-2"
+        )).when(llmClient).complete(any());
+        var nextSession = service.create(user.getId(), resume.getId(), job.getId());
+        service.answer(user.getId(), nextSession.sessionId(), "我会先说明事务边界和失败恢复策略。");
+        var crossSessionMemory = memoryService.get(user.getId(), resume.getId(), job.getId());
+        assertThat(crossSessionMemory.sessionCount()).isEqualTo(2);
+        assertThat(crossSessionMemory.answerCount()).isEqualTo(3);
         User intruder = userRepository.save(new User(
                 "intruder-" + UUID.randomUUID() + "@example.com", "hash", "Intruder", UserRole.USER
         ));
         assertThatThrownBy(() -> service.get(intruder.getId(), created.sessionId()))
                 .isInstanceOf(BusinessException.class);
-        verify(llmClient, times(3)).complete(any());
+        assertThatThrownBy(() -> memoryService.get(intruder.getId(), resume.getId(), job.getId()))
+                .isInstanceOf(BusinessException.class);
+        ArgumentCaptor<LlmRequest> requests = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient, times(4)).complete(requests.capture());
+        assertThat(requests.getAllValues().get(1).messages().get(1).content())
+                .contains("interviewMemory", "answerCount", "1")
+                .doesNotContain("事务保证一致性");
+        assertThat(requests.getAllValues().get(3).messages().get(1).content())
+                .contains("interviewMemory", "answerCount", "2")
+                .doesNotContain("支持 REQUIRED 和 REQUIRES_NEW");
+
+        memoryService.clear(user.getId(), resume.getId(), job.getId());
+        assertThat(memoryService.get(user.getId(), resume.getId(), job.getId()).available()).isFalse();
     }
 
     private String evaluationJson(String followUpQuestion) {

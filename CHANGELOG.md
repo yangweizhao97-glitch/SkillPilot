@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.7 - 2026-06-21
+
+- Added bounded, persisted interview memory scoped by user, resume, job, and source session.
+- Derived memory only from Schema-validated answer evaluations, retaining scores, topics, strengths, and improvement areas instead of raw answers.
+- Added the latest three session summaries to answer evaluation and follow-up context through the existing secured LLM boundary.
+- Added authenticated memory read and clear APIs plus an in-session memory summary and user-controlled reset action.
+- Enforced item count and length limits and kept memory isolated from unrelated users and resume/job pairs.
+- Added Flyway V9 and cross-session reuse, raw-answer exclusion, isolation, deletion, migration, and frontend regression coverage.
+
 ## 0.2.6 - 2026-06-21
 
 - Added controlled Agent handoffs between active career-analysis stages and the final report aggregator.

@@ -108,6 +108,7 @@ MCP remains disabled unless an endpoint and explicit tool allowlist are configur
 - Workflow: `/api/career-tasks`, `/api/career-tasks/{id}/logs`, `/api/career-tasks/{id}/events`
 - Reports: `/api/reports`, `/api/reports/{id}`
 - Interactive interview: `/api/interview/sessions`, `/api/interview/sessions/{id}/answers/stream`
+- Interview memory: `GET/DELETE /api/interview/memory?resumeId={id}&jobId={id}`
 
 ## Operations
 

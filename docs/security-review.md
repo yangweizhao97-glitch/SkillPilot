@@ -42,3 +42,5 @@ Review date: 2026-06-21
 - MCP calls retain local task ownership checks and redacted Tool Registry audit logs. Bearer tokens, remote content, and structured results are not persisted in clear text.
 - Agent handoffs are forward-only and use a local source-to-target allowlist, maximum depth, and visited-Agent loop detection. Models cannot name arbitrary handoff targets.
 - Handoff events contain task/trace identity, Agent names, depth, and route outcome only; resume, JD, retrieved context, and model output remain in their task-scoped stores.
+- Long-term interview memory is isolated by user, resume, job, and source session. It is derived from validated score output and does not copy candidate answer text.
+- Only the three most recent session memories and bounded summary items enter secured LLM context; users can inspect and delete memory for a resume/job pair.

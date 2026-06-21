@@ -4,7 +4,7 @@ import {
   FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
+import { api, session, type CareerTask, type InterviewMemory, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
@@ -147,6 +147,7 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   const [streamText, setStreamText] = useState('')
   const [review, setReview] = useState<InterviewReview | null>(null)
   const [reviewBusy, setReviewBusy] = useState(false)
+  const [memory, setMemory] = useState<InterviewMemory | null>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
 
   const loadSessions = useCallback(async () => {
@@ -158,9 +159,10 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [active?.messages, streamText])
 
   async function openSession(id: number) {
-    setBusy(true); setError(''); setReview(null)
+    setBusy(true); setError(''); setReview(null); setMemory(null)
     try {
       const next = await api.interviewSession(id); setActive(next)
+      setMemory(await api.interviewMemory(next.resumeId, next.jobId))
       if (next.status === 'FINISHED') {
         const state = await api.interviewReview(id); setReview(state.review || null)
       }
@@ -172,7 +174,7 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
   async function createSession() {
     if (!resumeId || !jobId) return
     setBusy(true); setError('')
-    try { const next = await api.createInterviewSession(resumeId, jobId); setActive(next); setReview(null); await loadSessions() }
+    try { const next = await api.createInterviewSession(resumeId, jobId); setActive(next); setReview(null); setMemory(await api.interviewMemory(resumeId, jobId)); await loadSessions() }
     catch (reason) { setError(reason instanceof Error ? reason.message : '面试创建失败') }
     finally { setBusy(false) }
   }
@@ -199,6 +201,7 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
       })
       const completed = await api.interviewSession(active.sessionId)
       setActive(completed)
+      setMemory(await api.interviewMemory(completed.resumeId, completed.jobId))
       if (completed.status === 'FINISHED') await generateReview(completed.sessionId)
       await loadSessions()
     }
@@ -223,6 +226,14 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
     try { setReview(await api.generateInterviewReview(sessionId)) }
     catch (reason) { setError(reason instanceof Error ? reason.message : '复盘报告生成失败') }
     finally { setReviewBusy(false) }
+  }
+
+  async function clearMemory() {
+    if (!active) return
+    setBusy(true); setError('')
+    try { await api.clearInterviewMemory(active.resumeId, active.jobId); setMemory(await api.interviewMemory(active.resumeId, active.jobId)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '记忆清除失败') }
+    finally { setBusy(false) }
   }
 
   const resumeName = (id: number) => resumes.find(item => item.resumeId === id)?.title || `简历 #${id}`
@@ -253,6 +264,7 @@ function InterviewWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] 
           <div className="interview-progress"><strong>{active.currentQuestion}/{active.totalQuestions}</strong><span>当前题目</span></div>
           {active.status === 'IN_PROGRESS' && <button className="secondary" onClick={() => void finish()} disabled={busy}><Square size={14} />结束</button>}
         </header>
+        {memory?.available && <div className="memory-card"><div><strong>长期面试记忆</strong><span>{memory.sessionCount} 场 · {memory.answerCount} 次回答 · 平均 {memory.averageScore}</span><p>{memory.summary}</p></div><button className="secondary small" disabled={busy} onClick={() => void clearMemory()}>清除记忆</button></div>}
         <div className="transcript" ref={transcriptRef}>
           {active.messages.map(message => {
             const evaluation = active.evaluations.find(item => item.answerMessageId === message.messageId)
