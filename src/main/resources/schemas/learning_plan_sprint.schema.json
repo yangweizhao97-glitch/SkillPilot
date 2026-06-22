@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "planMode", "summary", "targetRole", "interviewDate", "daysRemaining", "availableHoursPerDay", "priorities", "dailyPlans", "practiceQuestions", "mockInterviewSchedule", "sourceMaterials", "adjustmentReason", "successMetrics"],
+  "properties": {
+    "schemaVersion": {"const": "2.0"},
+    "planMode": {"const": "SPRINT"},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "targetRole": {"type": "string", "minLength": 1, "maxLength": 200},
+    "interviewDate": {"type": "string", "format": "date"},
+    "daysRemaining": {"type": "integer", "minimum": 0, "maximum": 7},
+    "availableHoursPerDay": {"type": "integer", "minimum": 1, "maximum": 12},
+    "priorities": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/priority"}},
+    "dailyPlans": {"type": "array", "minItems": 1, "maxItems": 8, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["day", "date", "focus", "actions", "questions", "deliverables"],
+      "properties": {
+        "day": {"type": "integer", "minimum": 1, "maximum": 8},
+        "date": {"type": "string", "format": "date"},
+        "focus": {"type": "string", "minLength": 1, "maxLength": 200},
+        "actions": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+        "questions": {"type": "array", "minItems": 1, "maxItems": 15, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+        "deliverables": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 500}}
+      }
+    }},
+    "practiceQuestions": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "mockInterviewSchedule": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "object", "additionalProperties": false, "required": ["day", "focus"], "properties": {"day": {"type": "integer", "minimum": 1, "maximum": 8}, "focus": {"type": "string", "minLength": 1, "maxLength": 500}}}},
+    "sourceMaterials": {"type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 300}},
+    "adjustmentReason": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "successMetrics": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "string", "minLength": 1, "maxLength": 500}}
+  },
+  "$defs": {
+    "priority": {"type": "object", "additionalProperties": false, "required": ["priority", "skill", "gap", "evidence"], "properties": {
+      "priority": {"type": "integer", "minimum": 1, "maximum": 8},
+      "skill": {"type": "string", "minLength": 1, "maxLength": 200},
+      "gap": {"type": "string", "minLength": 1, "maxLength": 500},
+      "evidence": {"type": "string", "minLength": 1, "maxLength": 500}
+    }}
+  }
+}

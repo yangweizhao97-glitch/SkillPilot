@@ -36,6 +36,26 @@ class PdfReportRendererTest {
         Files.write(fixture, bytes);
     }
 
+    @Test
+    void rendersSprintPlanByDay() throws Exception {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("planMode", "SPRINT"); value.put("summary", "三天完成核心问题冲刺。");
+        value.put("targetRole", "Java 后端工程师"); value.put("interviewDate", "2026-06-25");
+        value.put("availableHoursPerDay", 2);
+        value.put("dailyPlans", List.of(Map.of("day", 1, "focus", "事务传播",
+                "actions", List.of("复盘项目事务边界"), "questions", List.of("REQUIRES_NEW 如何工作？"),
+                "deliverables", List.of("五分钟口述稿"))));
+        value.put("practiceQuestions", List.of("如何处理事务失效？"));
+        value.put("successMetrics", List.of("能讲清事务边界"));
+
+        byte[] bytes = new PdfReportRenderer(new PdfExportProperties()).render(
+                report(), Optional.of(new LearningPlan(1L, 10L, 1L, value)));
+        try (var document = Loader.loadPDF(bytes)) {
+            assertThat(new PDFTextStripper().getText(document))
+                    .contains("短期面试冲刺计划", "第 1 天", "事务传播");
+        }
+    }
+
     private FinalReport report() {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("status", "COMPLETE");

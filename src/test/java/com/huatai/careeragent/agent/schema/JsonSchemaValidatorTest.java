@@ -56,6 +56,21 @@ class JsonSchemaValidatorTest {
     }
 
     @Test
+    void validatesSprintLearningPlanContract() {
+        String sprint = """
+                {"schemaVersion":"2.0","planMode":"SPRINT","summary":"三天冲刺事务与消息队列", "targetRole":"Java 后端",
+                "interviewDate":"2026-06-25","daysRemaining":3,"availableHoursPerDay":2,
+                "priorities":[{"priority":1,"skill":"事务","gap":"案例不足","evidence":"面试评分"}],
+                "dailyPlans":[{"day":1,"date":"2026-06-22","focus":"事务","actions":["复盘传播行为"],"questions":["REQUIRES_NEW 如何工作？"],"deliverables":["口述稿"]}],
+                "practiceQuestions":["如何设计事务边界？"],"mockInterviewSchedule":[{"day":3,"focus":"完整模拟"}],
+                "sourceMaterials":["最终报告"],"adjustmentReason":"评分显示事务深度不足。","successMetrics":["五分钟讲清事务案例"]}
+                """;
+        assertThat(validator.validate("learning_plan_sprint.schema.json", sprint).valid()).isTrue();
+        assertThat(validator.validate("learning_plan_sprint.schema.json",
+                sprint.replace("\"SPRINT\"", "\"LONG_TERM\"")).valid()).isFalse();
+    }
+
+    @Test
     void repairsInvalidOutputWithLlmAndRejectsFailedRepair() {
         LlmClient llmClient = mock(LlmClient.class);
         SchemaRepairService repairService = new SchemaRepairService(validator, llmClient);

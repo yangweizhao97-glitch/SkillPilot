@@ -12,12 +12,15 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 import java.util.Map;
+import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 
 class LearningPlanServiceTest {
     private final LearningPlanRepository plans = mock(LearningPlanRepository.class);
@@ -80,13 +83,37 @@ class LearningPlanServiceTest {
         when(report.getId()).thenReturn(12L);
         when(report.getReportJson()).thenReturn(Map.of("status", "COMPLETE"));
         when(plans.findByUserIdAndTaskId(3L, 9L)).thenReturn(Optional.empty());
-        when(store.claim(3L, 9L, 12L)).thenThrow(new IllegalStateException("already running"));
+        when(store.claim(org.mockito.ArgumentMatchers.eq(3L), org.mockito.ArgumentMatchers.eq(9L),
+                org.mockito.ArgumentMatchers.eq(12L), any())).thenThrow(new IllegalStateException("already running"));
 
         assertThatThrownBy(() -> service.generate(3L, 9L))
                 .isInstanceOfSatisfying(BusinessException.class,
                         error -> org.assertj.core.api.Assertions.assertThat(error.getCode())
                                 .isEqualTo("LEARNING_PLAN_GENERATION_IN_PROGRESS"));
         verifyNoInteractions(agent, executor);
-        verify(store).claim(3L, 9L, 12L);
+        verify(store).claim(org.mockito.ArgumentMatchers.eq(3L), org.mockito.ArgumentMatchers.eq(9L),
+                org.mockito.ArgumentMatchers.eq(12L), any());
+    }
+
+    @Test
+    void autoSelectsSprintForAnInterviewWithinSevenDays() {
+        var spec = service.resolve(new LearningPlanService.GenerateOptions(
+                LearningPlanMode.AUTO, LocalDate.now().plusDays(3), 2, 8,
+                "互联网", "目标公司", "Java 后端", "中级", List.of("事务", "消息队列")
+        ));
+
+        org.assertj.core.api.Assertions.assertThat(spec.resolvedMode()).isEqualTo(LearningPlanMode.SPRINT);
+        org.assertj.core.api.Assertions.assertThat(spec.daysRemaining()).isEqualTo(3);
+        org.assertj.core.api.Assertions.assertThat(spec.availableHoursPerDay()).isEqualTo(2);
+    }
+
+    @Test
+    void explicitSprintRequiresAnInterviewWithinSevenDays() {
+        assertThatThrownBy(() -> service.resolve(new LearningPlanService.GenerateOptions(
+                LearningPlanMode.SPRINT, LocalDate.now().plusDays(10), 2, 8,
+                null, null, null, null, List.of()
+        ))).isInstanceOfSatisfying(BusinessException.class,
+                error -> org.assertj.core.api.Assertions.assertThat(error.getCode())
+                        .isEqualTo("SPRINT_INTERVIEW_DATE_REQUIRED"));
     }
 }

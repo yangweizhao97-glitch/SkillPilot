@@ -15,4 +15,6 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
     @Query("select s from InterviewSession s where s.id = :id and s.userId = :userId")
     Optional<InterviewSession> findLockedByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
     List<InterviewSession> findByUserIdOrderByCreatedAtDescIdDesc(Long userId);
+    List<InterviewSession> findTop3ByUserIdAndResumeIdAndJobIdOrderByUpdatedAtDescIdDesc(
+            Long userId, Long resumeId, Long jobId);
 }

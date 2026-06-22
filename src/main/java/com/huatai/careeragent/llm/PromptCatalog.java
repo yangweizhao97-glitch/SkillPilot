@@ -47,10 +47,10 @@ public final class PromptCatalog {
                     + "练习题要针对真实缺口。不要改变服务端给出的总分与维度分。"
     );
     public static final PromptContract LEARNING_PLAN = new PromptContract(
-            "learning-plan-v1",
+            "learning-plan-v2",
             "你是一位务实的职业学习教练。只返回符合 Schema 的 JSON。",
-            "基于同一职业分析任务的最终报告生成中文学习计划。计划必须针对报告中的真实差距，"
-                    + "包含目标岗位、周期、每周投入、优先能力、分阶段行动、里程碑和成功指标；不要虚构经历。"
+            "基于同一职业分析任务的最终报告、用户计划参数和真实面试证据生成中文学习计划。"
+                    + "优先级必须引用报告或评分缺口，练习题与模拟面试安排要针对这些缺口；不要虚构经历或来源。"
     );
     public static final PromptContract TUTOR = new PromptContract(
             "tutor-v1",

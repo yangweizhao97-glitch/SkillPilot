@@ -21,13 +21,24 @@ export type ReportSummary = {
 }
 export type ReportDetail = ReportSummary & { report: Record<string, unknown>; exportStatus: string }
 export type LearningPlan = {
-  planId: number; taskId: number; reportId: number; schemaVersion: string; createdAt: string;
-  plan: {
+  planId: number; taskId: number; reportId: number; schemaVersion: string; planMode: 'SPRINT' | 'LONG_TERM';
+  interviewDate?: string; daysRemaining?: number; request: Record<string, unknown>; createdAt: string; updatedAt: string;
+  plan: ({
+    schemaVersion?: string; planMode?: 'LONG_TERM';
     summary: string; targetRole: string; durationWeeks: number; weeklyHours: number;
     priorities: { priority: number; skill: string; gap: string; evidence: string }[];
     phases: { weekStart: number; weekEnd: number; title: string; goals: string[]; actions: string[]; deliverables: string[] }[];
-    milestones: { week: number; outcome: string; verification: string }[]; successMetrics: string[]
-  }
+    milestones: { week: number; outcome: string; verification: string }[]; successMetrics: string[];
+    practiceQuestions?: string[]; mockInterviewSchedule?: { week: number; focus: string }[];
+    sourceMaterials?: string[]; adjustmentReason?: string
+  } | {
+    schemaVersion: string; planMode: 'SPRINT'; summary: string; targetRole: string; interviewDate: string;
+    daysRemaining: number; availableHoursPerDay: number;
+    priorities: { priority: number; skill: string; gap: string; evidence: string }[];
+    dailyPlans: { day: number; date: string; focus: string; actions: string[]; questions: string[]; deliverables: string[] }[];
+    practiceQuestions: string[]; mockInterviewSchedule: { day: number; focus: string }[];
+    sourceMaterials: string[]; adjustmentReason: string; successMetrics: string[]
+  })
 }
 export type InterviewMessage = {
   messageId: number; questionId?: number; role: 'INTERVIEWER' | 'CANDIDATE';
@@ -146,8 +157,10 @@ export const api = {
   reports: () => request<ReportSummary[]>('/api/reports'),
   report: (id: number) => request<ReportDetail>(`/api/reports/${id}`),
   learningPlan: (taskId: number) => request<LearningPlan>(`/api/learning-plans?taskId=${taskId}`),
-  generateLearningPlan: (taskId: number) => request<LearningPlan>('/api/learning-plans', {
-    method: 'POST', body: JSON.stringify({ taskId })
+  generateLearningPlan: (body: { taskId: number; planMode: 'AUTO' | 'SPRINT' | 'LONG_TERM'; interviewDate?: string;
+    availableHoursPerDay: number; durationWeeks: number; targetIndustry?: string; targetCompany?: string;
+    targetPosition?: string; experienceLevel?: string; focusAreas?: string[] }) => request<LearningPlan>('/api/learning-plans', {
+    method: 'POST', body: JSON.stringify(body)
   }),
   exportReportPdf: (reportId: number) => request<{ fileName: string }>(`/api/reports/${reportId}/pdf`, { method: 'POST' }),
   downloadReportPdf: async (reportId: number, fileName: string) => {

@@ -79,10 +79,22 @@ public class PdfReportRenderer {
     }
 
     private void renderLearningPlan(Writer writer, Map<String, Object> plan) {
-        writer.section("个性化学习计划");
+        boolean sprint = "SPRINT".equals(text(plan.get("planMode"))) || plan.containsKey("dailyPlans");
+        writer.section(sprint ? "短期面试冲刺计划" : "个性化学习计划");
         writer.paragraph(text(plan.get("summary")));
-        writer.paragraph("目标岗位：" + text(plan.get("targetRole")) + "  ·  周期："
-                + text(plan.get("durationWeeks")) + " 周  ·  每周：" + text(plan.get("weeklyHours")) + " 小时");
+        if (sprint) {
+            writer.paragraph("目标岗位：" + text(plan.get("targetRole")) + "  ·  面试日期："
+                    + text(plan.get("interviewDate")) + "  ·  每天：" + text(plan.get("availableHoursPerDay")) + " 小时");
+            for (Object raw : listObjects(plan.get("dailyPlans"))) {
+                Map<String, Object> day = map(raw);
+                writer.subheading("第 " + text(day.get("day")) + " 天：" + text(day.get("focus")));
+                writer.list("行动", list(day.get("actions")));
+                writer.list("必练题", list(day.get("questions")));
+                writer.list("交付物", list(day.get("deliverables")));
+            }
+        } else {
+            writer.paragraph("目标岗位：" + text(plan.get("targetRole")) + "  ·  周期："
+                    + text(plan.get("durationWeeks")) + " 周  ·  每周：" + text(plan.get("weeklyHours")) + " 小时");
         for (Object raw : listObjects(plan.get("phases"))) {
             Map<String, Object> phase = map(raw);
             writer.subheading("第 " + text(phase.get("weekStart")) + "–" + text(phase.get("weekEnd"))
@@ -91,6 +103,8 @@ public class PdfReportRenderer {
             writer.list("行动", list(phase.get("actions")));
             writer.list("交付物", list(phase.get("deliverables")));
         }
+        }
+        writer.list("专项练习题", list(plan.get("practiceQuestions")));
         writer.list("成功指标", list(plan.get("successMetrics")));
     }
 

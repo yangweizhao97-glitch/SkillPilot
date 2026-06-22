@@ -9,12 +9,16 @@ import com.huatai.careeragent.agent.tool.AgentNames;
 import com.huatai.careeragent.agent.tool.GetFinalReportTool;
 import com.huatai.careeragent.learning.LearningPlanResponse;
 import com.huatai.careeragent.learning.LearningPlanStore;
+import com.huatai.careeragent.learning.LearningPlanEvidenceService;
+import com.huatai.careeragent.learning.LearningPlanGenerationSpec;
+import com.huatai.careeragent.learning.LearningPlanMode;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
 import com.huatai.careeragent.llm.PromptCatalog;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @Component
 public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, LearningPlanResponse> {
@@ -23,14 +27,17 @@ public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, Learnin
     private final AgentLlmGateway llm;
     private final SchemaRepairService schemaRepair;
     private final LearningPlanStore store;
+    private final LearningPlanEvidenceService evidenceService;
 
     public LearningPlanAgent(AgentToolGateway tools, AgentOutputSupport outputSupport, AgentLlmGateway llm,
-                             SchemaRepairService schemaRepair, LearningPlanStore store) {
+                             SchemaRepairService schemaRepair, LearningPlanStore store,
+                             LearningPlanEvidenceService evidenceService) {
         this.tools = tools;
         this.outputSupport = outputSupport;
         this.llm = llm;
         this.schemaRepair = schemaRepair;
         this.store = store;
+        this.evidenceService = evidenceService;
     }
 
     @Override public String name() { return AgentNames.LEARNING_PLAN_AGENT; }
@@ -39,20 +46,44 @@ public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, Learnin
     @Override
     public AgentResult<LearningPlanResponse> execute(Input input, AgentContext context) {
         GetFinalReportTool.Output report = tools.finalReport(input.taskId(), context, name());
+        var evidence = evidenceService.collect(context.userId(), input.resumeId(), input.jobId());
+        String instruction = PromptCatalog.LEARNING_PLAN.instruction() + "\n" + modeInstruction(input.spec());
         LlmResponse response = llm.complete(LlmRequest.secured(
-                PromptCatalog.LEARNING_PLAN.systemPrompt(), PromptCatalog.LEARNING_PLAN.instruction(),
-                List.of(outputSupport.json(report.report())), context.traceId(), true
+                PromptCatalog.LEARNING_PLAN.systemPrompt(), instruction,
+                List.of(outputSupport.json(report.report()), outputSupport.json(input.spec().requestJson()),
+                        outputSupport.json(evidence)), context.traceId(), true
         ), context, name());
+        String schema = input.spec().resolvedMode() == LearningPlanMode.SPRINT
+                ? "learning_plan_sprint.schema.json" : "learning_plan_long_term.schema.json";
         RepairResult validated = schemaRepair.validateOrRepair(
-                "learning_plan.schema.json", response.content(), context.traceId(),
+                schema, response.content(), context.traceId(),
                 request -> llm.complete(request, context, name()));
+        ObjectNode canonical = validated.value().deepCopy();
+        canonical.put("planMode", input.spec().resolvedMode().name());
+        if (input.spec().resolvedMode() == LearningPlanMode.SPRINT) {
+            canonical.put("interviewDate", input.spec().interviewDate().toString());
+            canonical.put("daysRemaining", input.spec().daysRemaining());
+            canonical.put("availableHoursPerDay", input.spec().availableHoursPerDay());
+        } else {
+            canonical.put("durationWeeks", input.spec().durationWeeks());
+            canonical.put("weeklyHours", input.spec().availableHoursPerDay() * 7);
+        }
         if (!report.reportId().equals(input.reportId())) throw new IllegalStateException("Final report changed during generation");
         LearningPlanResponse saved = store.complete(context.userId(), input.taskId(), report.reportId(),
-                input.generationId(), validated.value());
+                input.generationId(), canonical);
         return AgentResult.success(saved, "learningPlanId=" + saved.planId(),
                 outputSupport.totalUsage(response.usage(), validated));
     }
 
     @Override public String summarizeInput(Input input) { return "taskId=" + input.taskId(); }
-    public record Input(Long taskId, Long reportId, String generationId) { }
+    private String modeInstruction(LearningPlanGenerationSpec spec) {
+        if (spec.resolvedMode() == LearningPlanMode.SPRINT) {
+            return "生成 SPRINT 短期冲刺计划，按天安排 dailyPlans。优先覆盖岗位高频题、简历项目必问、"
+                    + "真实评分缺口、模拟面试和面试前检查；不要生成 phases 或 milestones。";
+        }
+        return "生成 LONG_TERM 长期成长计划，按周安排 phases 和 milestones，包含项目产出、阶段模拟面试、"
+                + "练习题，并根据真实评分与复盘缺口说明 adjustmentReason。";
+    }
+    public record Input(Long taskId, Long reportId, String generationId,
+                        LearningPlanGenerationSpec spec, Long resumeId, Long jobId) { }
 }

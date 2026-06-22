@@ -38,6 +38,22 @@ public class LearningPlanStore {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public String claim(Long userId, Long taskId, Long reportId, LearningPlanGenerationSpec spec) {
+        String generationId = UUID.randomUUID().toString();
+        LearningPlan plan = repository.findLockedByUserIdAndTaskId(userId, taskId).orElse(null);
+        if (plan == null) {
+            repository.saveAndFlush(LearningPlan.generating(userId, taskId, reportId, generationId, spec));
+            return generationId;
+        }
+        if ("GENERATING".equals(plan.getGenerationStatus())
+                && !plan.generationIsStale(Instant.now().minus(GENERATION_TIMEOUT))) {
+            throw new IllegalStateException("Learning plan generation is already running");
+        }
+        plan.restart(reportId, generationId, spec);
+        return generationId;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public LearningPlanResponse complete(Long userId, Long taskId, Long reportId, String generationId, JsonNode result) {
         LearningPlan plan = repository.findLockedByUserIdAndTaskId(userId, taskId)
                 .orElseThrow(() -> new IllegalStateException("Learning plan claim not found"));
