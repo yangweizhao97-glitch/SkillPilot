@@ -12,12 +12,18 @@ public class PublicKnowledgeAdminController {
     private final PublicKnowledgeAdminService service;
     private final PublicKnowledgeDiscoveryService discoveryService;
     private final PublicKnowledgeExtractionService extractionService;
+    private final PublicKnowledgeQualityService qualityService;
+    private final PublicKnowledgeCollectionService collectionService;
     public PublicKnowledgeAdminController(PublicKnowledgeAdminService service,
                                           PublicKnowledgeDiscoveryService discoveryService,
-                                          PublicKnowledgeExtractionService extractionService) {
+                                          PublicKnowledgeExtractionService extractionService,
+                                          PublicKnowledgeQualityService qualityService,
+                                          PublicKnowledgeCollectionService collectionService) {
         this.service = service;
         this.discoveryService = discoveryService;
         this.extractionService = extractionService;
+        this.qualityService = qualityService;
+        this.collectionService = collectionService;
     }
 
     @PostMapping
@@ -49,5 +55,17 @@ public class PublicKnowledgeAdminController {
     public ApiResponse<SourceResponse> extract(CurrentUser user,
             @Valid @RequestBody PublicKnowledgeExtractionService.ExtractRequest request) {
         return ApiResponse.ok(extractionService.extractAndCreate(user.userId(), request));
+    }
+
+    @PostMapping("/{sourceId}/quality-review")
+    public ApiResponse<PublicKnowledgeQualityService.QualityReviewResponse> qualityReview(
+            @PathVariable Long sourceId) {
+        return ApiResponse.ok(qualityService.review(sourceId));
+    }
+
+    @PostMapping("/collect")
+    public ApiResponse<PublicKnowledgeCollectionService.CollectionResponse> collect(CurrentUser user,
+            @Valid @RequestBody PublicKnowledgeCollectionService.CollectionRequest request) {
+        return ApiResponse.ok(collectionService.collect(user.userId(), request));
     }
 }

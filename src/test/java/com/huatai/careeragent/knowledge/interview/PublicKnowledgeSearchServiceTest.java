@@ -26,7 +26,7 @@ class PublicKnowledgeSearchServiceTest {
         when(embeddings.embed(anyString())).thenReturn(new EmbeddingResponse(new float[]{1, 0}, 2, "test"));
         when(formatter.toPgVector(any())).thenReturn("[1,0]");
         PublicKnowledgeSearchRow row = new PublicKnowledgeSearchRow(7L, "question-hash", "如何设计限流？", "SYSTEM_DESIGN",
-                "MEDIUM", "[\"令牌桶\"]", "[\"定义目标\"]", "参考答案", "[]", "[]", "[]",
+                "MEDIUM", 88, "SINGLE_SOURCE", "[\"令牌桶\"]", "[\"定义目标\"]", "参考答案", "[]", "[]", "[]",
                 "互联网", "示例公司", "Java 后端", "3-5年", "二面", LocalDate.now(), "授权面经",
                 "https://example.com/interview", "MANUAL", Instant.now(), 0.9, 0.88);
         when(repository.vector(anyString(), any(), anyInt())).thenReturn(List.of(row));

@@ -12,6 +12,7 @@ import java.util.List;
 public class PublicKnowledgeSearchRepository {
     private static final String SELECT = """
             SELECT q.id, q.question_hash, q.normalized_question, q.question_type, q.difficulty,
+                   q.quality_score, q.confidence_label,
                    q.knowledge_points::text, q.answer_outline::text, q.reference_answer,
                    q.scoring_rubric::text, q.common_mistakes::text, q.follow_up_candidates::text,
                    e.industry, e.company, e.position, e.experience_level, e.interview_round, e.event_date,
@@ -21,7 +22,8 @@ public class PublicKnowledgeSearchRepository {
              FROM public_interview_questions q
              JOIN interview_experiences e ON e.id = q.experience_id
              JOIN knowledge_sources s ON s.id = e.source_id
-             WHERE q.status = 'PUBLISHED' AND e.status = 'PUBLISHED' AND s.review_status = 'APPROVED'
+             WHERE q.status = 'PUBLISHED' AND q.quality_status = 'ACCEPTED' AND q.quality_score >= 75
+               AND e.status = 'PUBLISHED' AND s.review_status = 'APPROVED'
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -31,8 +33,9 @@ public class PublicKnowledgeSearchRepository {
     public List<PublicKnowledgeSearchRow> vector(String vector, PublicKnowledgeSearchDtos.SearchRequest request,
                                                  int limit) {
         StringBuilder sql = new StringBuilder(SELECT).append("""
-                (GREATEST(0, 1 - (q.embedding <=> ?::vector)) * 0.80
-                 + s.quality_score::double precision * 0.15
+                (GREATEST(0, 1 - (q.embedding <=> ?::vector)) * 0.70
+                 + q.quality_score::double precision / 100 * 0.15
+                 + s.quality_score::double precision * 0.10
                  + (1.0 / (1.0 + GREATEST(0, EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_at, s.collected_at))) / 31557600))) * 0.05) AS score
                 """).append(FROM).append(" AND q.embedding IS NOT NULL");
         List<Object> params = new ArrayList<>();
@@ -54,7 +57,8 @@ public class PublicKnowledgeSearchRepository {
             sql.append("CASE WHEN ").append(searchable).append(" LIKE ? THEN 1 ELSE 0 END");
             params.add("%" + keywords.get(index).toLowerCase() + "%");
         }
-        sql.append(")::double precision / ? * 0.80 + s.quality_score::double precision * 0.15")
+        sql.append(")::double precision / ? * 0.70 + q.quality_score::double precision / 100 * 0.15")
+                .append(" + s.quality_score::double precision * 0.10")
                 .append(" + (1.0 / (1.0 + GREATEST(0, EXTRACT(EPOCH FROM (NOW() - COALESCE(s.published_at, s.collected_at))) / 31557600))) * 0.05 AS score")
                 .append(FROM).append(" AND (");
         params.add(keywords.size());
@@ -92,9 +96,10 @@ public class PublicKnowledgeSearchRepository {
 
     private PublicKnowledgeSearchRow map(ResultSet rs, int rowNum) throws SQLException {
         return new PublicKnowledgeSearchRow(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9),
+                rs.getString(5), rs.getInt(6), rs.getString(7), rs.getString(8), rs.getString(9),
                 rs.getString(10), rs.getString(11), rs.getString(12), rs.getString(13), rs.getString(14),
-                rs.getString(15), rs.getString(16), rs.getObject(17, java.time.LocalDate.class), rs.getString(18),
-                rs.getString(19), rs.getString(20), rs.getTimestamp(21).toInstant(), rs.getDouble(22), rs.getDouble(23));
+                rs.getString(15), rs.getString(16), rs.getString(17), rs.getString(18),
+                rs.getObject(19, java.time.LocalDate.class), rs.getString(20), rs.getString(21),
+                rs.getString(22), rs.getTimestamp(23).toInstant(), rs.getDouble(24), rs.getDouble(25));
     }
 }

@@ -655,6 +655,8 @@ POST /api/learning-plans
 - 支持结构化人工导入，以及百炼对粘贴文本进行结构化抽取；模型 JSON 必须经过独立 Schema 校验。
 - 导入内容经过联系方式脱敏、Prompt Injection 清理、内容哈希与问题哈希去重。
 - 来源必须依次完成导入、向量化处理和管理员审核；只有 `APPROVED/PUBLISHED` 数据可以被检索。
+- V19 增加题目质量审查：技术正确性、面试合理性、时效性和答案质量由独立 Schema 评估，服务端重新计算总分；低于 75 分或未通过审查的题目不能发布。
+- 同一标准化问题按独立来源计数，只允许多来源内容标记 `MULTI_SOURCE_VERIFIED`；单来源、AI 扩展、过时和拒绝内容分别保留明确标签。
 - 公共检索支持行业、岗位、公司、职级和轮次过滤，并组合向量相关度、关键词、来源质量和时效性排序。
 - `searchPublicInterviewKnowledge` 已进入 Tool Registry，并授权给面试题与学习计划 Agent；Tutor 同时检索私人资料和公共题库。
 - 搜索 MCP 适配器默认关闭，要求工具白名单与域名白名单；发现结果只作为候选来源，不能绕过审核直接发布。
@@ -666,6 +668,8 @@ GET  /api/interview-knowledge/search
 POST /api/admin/interview-knowledge/sources
 POST /api/admin/interview-knowledge/sources/extract
 POST /api/admin/interview-knowledge/sources/discover
+POST /api/admin/interview-knowledge/sources/collect
+POST /api/admin/interview-knowledge/sources/{sourceId}/quality-review
 POST /api/admin/interview-knowledge/sources/{sourceId}/process
 POST /api/admin/interview-knowledge/sources/{sourceId}/review
 GET  /api/admin/interview-knowledge/sources/{sourceId}
@@ -676,9 +680,10 @@ GET  /api/admin/interview-knowledge/sources/{sourceId}
 ```text
 PUBLIC_KNOWLEDGE_SEARCH_ENABLED=true
 PUBLIC_KNOWLEDGE_SEARCH_TOOL=search_web
+PUBLIC_KNOWLEDGE_FETCH_TOOL=fetch_page
 PUBLIC_KNOWLEDGE_ALLOWED_DOMAINS=nowcoder.com,example-authorized-domain.com
 MCP_ENABLED=true
-MCP_ALLOWED_TOOLS=search_web
+MCP_ALLOWED_TOOLS=search_web,fetch_page
 ```
 
 代码完成不等于已经拥有第三方内容授权。生产数据仍需由管理员导入授权资料，或配置符合平台规则的正式搜索服务后逐条审核发布。

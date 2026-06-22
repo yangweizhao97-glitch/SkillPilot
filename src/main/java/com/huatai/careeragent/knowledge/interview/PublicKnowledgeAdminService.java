@@ -19,10 +19,12 @@ import java.util.Map;
 
 @Service
 public class PublicKnowledgeAdminService {
+    static final int MINIMUM_PUBLISH_QUALITY = 75;
     private final KnowledgeSourceRepository sourceRepository;
     private final InterviewExperienceRepository experienceRepository;
     private final PublicInterviewQuestionRepository questionRepository;
     private final PublicKnowledgeEmbeddingRepository embeddingRepository;
+    private final PublicQuestionEvidenceRepository evidenceRepository;
     private final PublicKnowledgeSanitizer sanitizer;
     private final EmbeddingClient embeddingClient;
     private final EmbeddingVectorFormatter vectorFormatter;
@@ -32,12 +34,14 @@ public class PublicKnowledgeAdminService {
                                        InterviewExperienceRepository experienceRepository,
                                        PublicInterviewQuestionRepository questionRepository,
                                        PublicKnowledgeEmbeddingRepository embeddingRepository,
+                                       PublicQuestionEvidenceRepository evidenceRepository,
                                        PublicKnowledgeSanitizer sanitizer, EmbeddingClient embeddingClient,
                                        EmbeddingVectorFormatter vectorFormatter, ObjectMapper objectMapper) {
         this.sourceRepository = sourceRepository;
         this.experienceRepository = experienceRepository;
         this.questionRepository = questionRepository;
         this.embeddingRepository = embeddingRepository;
+        this.evidenceRepository = evidenceRepository;
         this.sanitizer = sanitizer;
         this.embeddingClient = embeddingClient;
         this.vectorFormatter = vectorFormatter;
@@ -46,6 +50,11 @@ public class PublicKnowledgeAdminService {
 
     @Transactional
     public SourceResponse create(Long adminId, CreateSourceRequest request) {
+        if (request.sourceUrl() != null && !request.sourceUrl().isBlank()
+                && sourceRepository.findBySourceUrlIgnoreCase(request.sourceUrl().trim()).isPresent()) {
+            throw new BusinessException("PUBLIC_KNOWLEDGE_SOURCE_URL_DUPLICATE",
+                    "该来源链接已经导入", HttpStatus.CONFLICT);
+        }
         String hash = hash(request);
         sourceRepository.findByContentHash(hash).ifPresent(existing -> {
             throw new BusinessException("PUBLIC_KNOWLEDGE_DUPLICATE", "该来源已经导入", HttpStatus.CONFLICT);
@@ -72,6 +81,7 @@ public class PublicKnowledgeAdminService {
                         cleanList(question.answerOutline(), trace), clean(question.referenceAnswer(), trace),
                         cleanRubric(question.scoringRubric(), trace), cleanList(question.commonMistakes(), trace),
                         cleanList(question.followUpCandidates(), trace)));
+                evidenceRepository.record(questionHash, source.getId());
             }
         }
         return response(source);
@@ -106,6 +116,10 @@ public class PublicKnowledgeAdminService {
             if (!embeddingRepository.allEmbedded(sourceId)) {
                 throw new BusinessException("PUBLIC_KNOWLEDGE_NOT_PROCESSED", "来源尚未完成向量化", HttpStatus.CONFLICT);
             }
+            if (!evidenceRepository.allAccepted(sourceId, MINIMUM_PUBLISH_QUALITY)) {
+                throw new BusinessException("PUBLIC_KNOWLEDGE_QUALITY_REVIEW_REQUIRED",
+                        "存在未通过质量审核的题目", HttpStatus.CONFLICT);
+            }
             source.approve(reviewerId);
             experiences.forEach(experience -> {
                 experience.publish();
@@ -136,11 +150,17 @@ public class PublicKnowledgeAdminService {
 
     private SourceResponse response(KnowledgeSource source) {
         List<InterviewExperience> experiences = experienceRepository.findBySourceIdOrderByIdAsc(source.getId());
-        int questions = experiences.stream().mapToInt(item ->
-                questionRepository.findByExperienceIdOrderByIdAsc(item.getId()).size()).sum();
+        List<PublicInterviewQuestion> questions = experiences.stream()
+                .flatMap(item -> questionRepository.findByExperienceIdOrderByIdAsc(item.getId()).stream()).toList();
+        int accepted = (int) questions.stream().filter(item ->
+                item.getQualityStatus() == PublicInterviewQuestion.QualityStatus.ACCEPTED).count();
+        int needsReview = (int) questions.stream().filter(item ->
+                item.getQualityStatus() == PublicInterviewQuestion.QualityStatus.NEEDS_REVIEW).count();
+        int rejected = (int) questions.stream().filter(item ->
+                item.getQualityStatus() == PublicInterviewQuestion.QualityStatus.REJECTED).count();
         return new SourceResponse(source.getId(), source.getTitle(), source.getPlatform(), source.getSourceUrl(),
-                source.getReviewStatus(), source.getQualityScore(), experiences.size(), questions,
-                source.getCollectedAt(), source.getRejectionReason());
+                source.getReviewStatus(), source.getQualityScore(), experiences.size(), questions.size(), accepted,
+                needsReview, rejected, source.getCollectedAt(), source.getRejectionReason());
     }
 
     private String searchableText(InterviewExperience experience, PublicInterviewQuestion question) {

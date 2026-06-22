@@ -85,6 +85,17 @@ class JsonSchemaValidatorTest {
     }
 
     @Test
+    void validatesPublicKnowledgeQualityReviewContract() {
+        String valid = """
+                {"decision":"ACCEPT","technicalAccuracy":90,"interviewPlausibility":85,"currency":80,
+                "answerQuality":88,"issues":[],"reviewSummary":"题目与答案合理。","correctedReferenceAnswer":null}
+                """;
+        assertThat(validator.validate("public_interview_quality_review.schema.json", valid).valid()).isTrue();
+        assertThat(validator.validate("public_interview_quality_review.schema.json",
+                valid.replace("\"technicalAccuracy\":90", "\"technicalAccuracy\":101")).valid()).isFalse();
+    }
+
+    @Test
     void repairsInvalidOutputWithLlmAndRejectsFailedRepair() {
         LlmClient llmClient = mock(LlmClient.class);
         SchemaRepairService repairService = new SchemaRepairService(validator, llmClient);

@@ -54,6 +54,7 @@ public final class PublicKnowledgeDtos {
 
     public record SourceResponse(Long sourceId, String title, String platform, String sourceUrl,
                                  KnowledgeSource.ReviewStatus reviewStatus, BigDecimal qualityScore,
-                                 int experienceCount, int questionCount, Instant collectedAt,
+                                 int experienceCount, int questionCount, int acceptedQuestions,
+                                 int needsReviewQuestions, int rejectedQuestions, Instant collectedAt,
                                  String rejectionReason) { }
 }

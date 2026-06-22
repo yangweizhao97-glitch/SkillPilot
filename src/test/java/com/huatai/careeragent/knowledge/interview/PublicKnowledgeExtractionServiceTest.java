@@ -34,7 +34,7 @@ class PublicKnowledgeExtractionServiceTest {
         when(repair.validateOrRepair(eq("public_interview_knowledge_extraction.schema.json"), eq(json), anyString()))
                 .thenReturn(new SchemaRepairService.RepairResult(mapper.readTree(json), null, false));
         SourceResponse expected = new SourceResponse(1L, "面经", "MANUAL", null,
-                KnowledgeSource.ReviewStatus.PENDING, new BigDecimal("0.8"), 1, 1, null, null);
+                KnowledgeSource.ReviewStatus.PENDING, new BigDecimal("0.8"), 1, 1, 0, 0, 0, null, null);
         when(admin.create(eq(9L), any())).thenReturn(expected);
         PublicKnowledgeExtractionService service = new PublicKnowledgeExtractionService(llm, repair, admin, mapper);
 

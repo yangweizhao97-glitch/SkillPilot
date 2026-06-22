@@ -66,6 +66,13 @@ public final class PromptCatalog {
                     + "将叙述拆成独立问题，并给出回答提纲、参考答案、评分要点、常见错误和可能追问。"
                     + "不要声称模型补充的通用答案来自原始面经，不要保留姓名、电话、邮箱、群号等个人信息。"
     );
+    public static final PromptContract PUBLIC_KNOWLEDGE_QUALITY_REVIEW = new PromptContract(
+            "public-knowledge-quality-review-v1",
+            "你是独立的技术面试题质量审核员。只返回符合 Schema 的 JSON。",
+            "分别审核技术正确性、真实面试合理性、内容时效性和参考答案质量。"
+                    + "不要因为题目带有公司名称就推断它是真题；来源真实性由服务端证据数量决定。"
+                    + "存在关键事实错误、明显过时、岗位不匹配或答案误导时必须 NEEDS_REVIEW 或 REJECT。"
+    );
 
     private PromptCatalog() { }
 
@@ -73,7 +80,8 @@ public final class PromptCatalog {
         Map<String, PromptContract> contracts = new LinkedHashMap<>();
         for (PromptContract contract : new PromptContract[]{
                 JOB_MATCH, RESUME_ANALYSIS, INTERVIEW_QUESTIONS, ANSWER_EVALUATION,
-                INTERVIEW_FOLLOW_UP, SESSION_REVIEW, LEARNING_PLAN, TUTOR, PUBLIC_KNOWLEDGE_EXTRACTION
+                INTERVIEW_FOLLOW_UP, SESSION_REVIEW, LEARNING_PLAN, TUTOR, PUBLIC_KNOWLEDGE_EXTRACTION,
+                PUBLIC_KNOWLEDGE_QUALITY_REVIEW
         }) {
             contracts.put(contract.id(), contract);
         }

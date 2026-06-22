@@ -60,7 +60,8 @@ public class PublicKnowledgeSearchService {
                 rubric(row.scoringRubric()), strings(row.commonMistakes()), strings(row.followUpCandidates()),
                 row.industry(), row.company(), row.position(), row.experienceLevel(), row.interviewRound(),
                 row.eventDate(), row.sourceTitle(), row.sourceUrl(), row.platform(), row.collectedAt(),
-                row.qualityScore(), row.score());
+                row.questionQualityScore(), PublicInterviewQuestion.ConfidenceLabel.valueOf(row.confidenceLabel()),
+                row.sourceQualityScore(), row.score());
     }
 
     private List<String> strings(String json) { return read(json, new TypeReference<>() {}); }

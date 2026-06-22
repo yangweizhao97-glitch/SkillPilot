@@ -49,7 +49,9 @@ public final class PublicKnowledgeSearchDtos {
             String sourceUrl,
             String platform,
             Instant collectedAt,
-            double qualityScore,
+            int questionQualityScore,
+            PublicInterviewQuestion.ConfidenceLabel confidenceLabel,
+            double sourceQualityScore,
             double score
     ) { }
 }

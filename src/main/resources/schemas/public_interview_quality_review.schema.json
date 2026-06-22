@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "technicalAccuracy", "interviewPlausibility", "currency", "answerQuality", "issues", "reviewSummary", "correctedReferenceAnswer"],
+  "properties": {
+    "decision": {"enum": ["ACCEPT", "NEEDS_REVIEW", "REJECT"]},
+    "technicalAccuracy": {"type": "integer", "minimum": 0, "maximum": 100},
+    "interviewPlausibility": {"type": "integer", "minimum": 0, "maximum": 100},
+    "currency": {"type": "integer", "minimum": 0, "maximum": 100},
+    "answerQuality": {"type": "integer", "minimum": 0, "maximum": 100},
+    "issues": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 500}},
+    "reviewSummary": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "correctedReferenceAnswer": {"type": ["string", "null"], "maxLength": 8000}
+  }
+}

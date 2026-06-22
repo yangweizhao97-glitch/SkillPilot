@@ -28,6 +28,14 @@ public class PublicInterviewQuestion {
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "common_mistakes", nullable = false, columnDefinition = "jsonb") private List<String> commonMistakes;
     @JdbcTypeCode(SqlTypes.JSON) @Column(name = "follow_up_candidates", nullable = false, columnDefinition = "jsonb") private List<String> followUpCandidates;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) private InterviewExperience.PublicationStatus status;
+    @Enumerated(EnumType.STRING) @Column(name = "quality_status", nullable = false, length = 32)
+    private QualityStatus qualityStatus;
+    @Column(name = "quality_score", nullable = false) private int qualityScore;
+    @Enumerated(EnumType.STRING) @Column(name = "confidence_label", nullable = false, length = 40)
+    private ConfidenceLabel confidenceLabel;
+    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "quality_review", nullable = false, columnDefinition = "jsonb")
+    private Map<String, Object> qualityReview;
+    @Column(name = "quality_reviewed_at") private Instant qualityReviewedAt;
     @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     @UpdateTimestamp @Column(name = "updated_at", nullable = false) private Instant updatedAt;
 
@@ -50,10 +58,22 @@ public class PublicInterviewQuestion {
         this.commonMistakes = List.copyOf(commonMistakes);
         this.followUpCandidates = List.copyOf(followUpCandidates);
         this.status = InterviewExperience.PublicationStatus.DRAFT;
+        this.qualityStatus = QualityStatus.PENDING;
+        this.qualityScore = 0;
+        this.confidenceLabel = ConfidenceLabel.SINGLE_SOURCE;
+        this.qualityReview = Map.of();
     }
 
     public void publish() { status = InterviewExperience.PublicationStatus.PUBLISHED; }
     public void reject() { status = InterviewExperience.PublicationStatus.REJECTED; }
+    public void applyQualityReview(QualityStatus qualityStatus, int qualityScore,
+                                   ConfidenceLabel confidenceLabel, Map<String, Object> review) {
+        this.qualityStatus = qualityStatus;
+        this.qualityScore = Math.min(Math.max(qualityScore, 0), 100);
+        this.confidenceLabel = confidenceLabel;
+        this.qualityReview = Map.copyOf(review);
+        this.qualityReviewedAt = Instant.now();
+    }
     public Long getId() { return id; }
     public Long getExperienceId() { return experienceId; }
     public String getNormalizedQuestion() { return normalizedQuestion; }
@@ -67,4 +87,11 @@ public class PublicInterviewQuestion {
     public List<String> getCommonMistakes() { return commonMistakes; }
     public List<String> getFollowUpCandidates() { return followUpCandidates; }
     public InterviewExperience.PublicationStatus getStatus() { return status; }
+    public QualityStatus getQualityStatus() { return qualityStatus; }
+    public int getQualityScore() { return qualityScore; }
+    public ConfidenceLabel getConfidenceLabel() { return confidenceLabel; }
+    public Map<String, Object> getQualityReview() { return qualityReview; }
+    public Instant getQualityReviewedAt() { return qualityReviewedAt; }
+    public enum QualityStatus { PENDING, ACCEPTED, NEEDS_REVIEW, REJECTED }
+    public enum ConfidenceLabel { MULTI_SOURCE_VERIFIED, SINGLE_SOURCE, AI_DERIVED, OUTDATED, REJECTED }
 }

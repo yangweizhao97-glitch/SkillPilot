@@ -23,12 +23,7 @@ public class PublicKnowledgeDiscoveryService {
     }
 
     public DiscoveryResponse discover(DiscoveryRequest request) {
-        if (!properties.isEnabled()) {
-            throw new ToolException("PUBLIC_SEARCH_DISABLED", "公共知识搜索未启用", false);
-        }
-        if (properties.getAllowedDomains().isEmpty()) {
-            throw new ToolException("PUBLIC_SEARCH_DOMAINS_REQUIRED", "公共知识搜索必须配置允许域名", false);
-        }
+        requireConfigured();
         int limit = request.limit() == null ? properties.getMaxResults()
                 : Math.min(Math.max(request.limit(), 1), properties.getMaxResults());
         Map<String, Object> arguments = new LinkedHashMap<>();
@@ -44,6 +39,35 @@ public class PublicKnowledgeDiscoveryService {
         List<DiscoveryCandidate> candidates = values.stream().filter(Map.class::isInstance)
                 .map(Map.class::cast).map(this::candidate).filter(Objects::nonNull).limit(limit).toList();
         return new DiscoveryResponse(candidates);
+    }
+
+    public FetchedPage fetch(DiscoveryCandidate candidate) {
+        requireConfigured();
+        if (!allowed(candidate.url())) {
+            throw new ToolException("PUBLIC_SEARCH_DOMAIN_NOT_ALLOWED", "候选页面不在允许域名中", false);
+        }
+        var result = mcpClient.callTool(properties.getFetchToolName(), Map.of("url", candidate.url()));
+        Object raw = result.structuredContent().get("text");
+        if (!(raw instanceof String text) || text.isBlank()) {
+            throw new ToolException("PUBLIC_FETCH_INVALID_RESPONSE",
+                    "页面抓取 MCP 必须返回 structuredContent.text", false);
+        }
+        String limited = text.length() <= properties.getMaxContentChars()
+                ? text : text.substring(0, properties.getMaxContentChars());
+        String cleaned = sanitizer.sanitize(limited, "public_knowledge_fetch");
+        if (cleaned == null || cleaned.isBlank()) {
+            throw new ToolException("PUBLIC_FETCH_EMPTY", "页面清理后没有可用内容", false);
+        }
+        return new FetchedPage(candidate.title(), candidate.url(), cleaned, candidate.publishedAt());
+    }
+
+    private void requireConfigured() {
+        if (!properties.isEnabled()) {
+            throw new ToolException("PUBLIC_SEARCH_DISABLED", "公共知识搜索未启用", false);
+        }
+        if (properties.getAllowedDomains().isEmpty()) {
+            throw new ToolException("PUBLIC_SEARCH_DOMAINS_REQUIRED", "公共知识搜索必须配置允许域名", false);
+        }
     }
 
     private DiscoveryCandidate candidate(Map<?, ?> raw) {
@@ -78,4 +102,5 @@ public class PublicKnowledgeDiscoveryService {
                                    Integer limit) { }
     public record DiscoveryResponse(List<DiscoveryCandidate> candidates) { }
     public record DiscoveryCandidate(String title, String url, String snippet, Instant publishedAt) { }
+    public record FetchedPage(String title, String url, String text, Instant publishedAt) { }
 }
