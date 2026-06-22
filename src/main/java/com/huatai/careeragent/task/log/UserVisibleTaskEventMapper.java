@@ -67,7 +67,7 @@ public class UserVisibleTaskEventMapper {
         List<TechnicalDetail> result = new ArrayList<>();
         logs.stream().filter(log -> log.status() != ExecutionLogStatus.HANDOFF_STARTED)
                 .forEach(log -> result.add(new TechnicalDetail(
-                        "执行事件", workflowLabel(log.workflowStatus()), log.status().name(), log.durationMs(),
+                        "执行事件", workflowLabel(log), log.status().name(), log.durationMs(),
                         log.updatedAt(), log.status() == ExecutionLogStatus.STEP_FAILED ? "该阶段执行失败" : "执行状态已记录")));
         tools.forEach(tool -> result.add(new TechnicalDetail(
                 "能力调用", toolLabel(tool.toolName()), tool.status().name(), tool.durationMs(), tool.updatedAt(),
@@ -90,7 +90,8 @@ public class UserVisibleTaskEventMapper {
 
     private Optional<WorkflowStatus> failedWorkflow(AgentTask task, List<TaskLogItem> logs) {
         if (task.getStatus() != WorkflowStatus.FAILED) return Optional.empty();
-        return logs.stream().filter(log -> log.status() == ExecutionLogStatus.STEP_FAILED)
+        return logs.stream()
+                .filter(log -> log.status() == ExecutionLogStatus.STEP_FAILED && log.workflowStatus() != null)
                 .max(Comparator.comparing(TaskLogItem::updatedAt)).map(TaskLogItem::workflowStatus);
     }
 
@@ -286,6 +287,13 @@ public class UserVisibleTaskEventMapper {
             case "callMcp" -> "调用扩展能力";
             default -> "内部能力调用";
         };
+    }
+
+    private String workflowLabel(TaskLogItem log) {
+        if (log.workflowStatus() == null) {
+            return "内部执行事件";
+        }
+        return workflowLabel(log.workflowStatus());
     }
 
     private String workflowLabel(WorkflowStatus status) {

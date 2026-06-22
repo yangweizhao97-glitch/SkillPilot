@@ -91,14 +91,14 @@ public final class TaskLogDtos {
             Instant updatedAt
     ) {
         public static TaskLogItem from(AgentExecutionLog log) {
-            WorkflowStatus workflowStatus = WorkflowStatus.valueOf(log.getStepName());
+            WorkflowStatus workflowStatus = parseWorkflowStatus(log.getStepName());
             return new TaskLogItem(
                     log.getId(),
                     log.getTraceId(),
                     log.getAgentName(),
                     log.getStepName(),
                     workflowStatus,
-                    workflowStatus.progress(),
+                    workflowStatus == null ? 0 : workflowStatus.progress(),
                     log.getStatus(),
                     log.getOutputSummary(),
                     log.getErrorMessage(),
@@ -108,6 +108,17 @@ public final class TaskLogDtos {
                     log.getTotalTokens(),
                     log.getCreatedAt()
             );
+        }
+
+        private static WorkflowStatus parseWorkflowStatus(String stepName) {
+            if (stepName == null) {
+                return null;
+            }
+            try {
+                return WorkflowStatus.valueOf(stepName);
+            } catch (IllegalArgumentException exception) {
+                return null;
+            }
         }
     }
 }

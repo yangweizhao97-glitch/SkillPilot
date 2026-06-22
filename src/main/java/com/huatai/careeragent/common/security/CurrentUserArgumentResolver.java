@@ -1,6 +1,8 @@
 package com.huatai.careeragent.common.security;
 
+import com.huatai.careeragent.common.error.BusinessException;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -25,7 +27,7 @@ public class CurrentUserArgumentResolver implements HandlerMethodArgumentResolve
     ) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !(authentication.getPrincipal() instanceof CurrentUser currentUser)) {
-            return null;
+            throw new BusinessException("UNAUTHORIZED", "Authentication is required", HttpStatus.UNAUTHORIZED);
         }
         return currentUser;
     }

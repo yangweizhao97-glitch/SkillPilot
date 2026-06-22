@@ -276,6 +276,13 @@ class CareerWorkflowIntegrationTest {
         assertThat(finalReportRepository.findAll()).isEmpty();
         assertThat(executionLogRepository.findAll())
                 .noneMatch(log -> log.getStatus() == ExecutionLogStatus.HANDOFF_COMPLETED);
+
+        mockMvc.perform(post("/api/reports/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"taskId\":" + taskId + "}")
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("JOB_REQUIRED"));
     }
 
     @Test

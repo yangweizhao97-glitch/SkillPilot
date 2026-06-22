@@ -186,7 +186,7 @@ class CareerTaskControllerTest {
     }
 
     @Test
-    void progressToleratesLearningPlanAgentLogs() throws Exception {
+    void progressToleratesAuxiliaryAgentLogs() throws Exception {
         AuthenticatedResources owner = createAuthenticatedResources();
 
         String response = mockMvc.perform(post("/api/career-tasks")
@@ -211,13 +211,20 @@ class CareerTaskControllerTest {
                 "learningPlanId=1", ExecutionLogStatus.STEP_COMPLETED, 1200,
                 com.huatai.careeragent.llm.LlmResponse.TokenUsage.empty(), null
         ));
+        executionLogRepository.save(AgentExecutionLog.agentExecution(
+                completed.getUserId(), completed.getId(), completed.getTraceId(),
+                "WEB_SEARCH_AGENT", "EXTERNAL_WEB_SEARCH", "taskId=" + taskId,
+                "resultCount=3", ExecutionLogStatus.STEP_COMPLETED, 300,
+                com.huatai.careeragent.llm.LlmResponse.TokenUsage.empty(), null
+        ));
 
         mockMvc.perform(get("/api/career-tasks/{taskId}/progress", taskId)
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.taskId").value(taskId))
                 .andExpect(jsonPath("$.data.steps[?(@.step == 'FINAL_REPORT')]").value(hasSize(1)))
-                .andExpect(jsonPath("$.data.technicalDetails[?(@.label == '学习计划生成')]").value(hasSize(1)));
+                .andExpect(jsonPath("$.data.technicalDetails[?(@.label == '学习计划生成')]").value(hasSize(1)))
+                .andExpect(jsonPath("$.data.technicalDetails[?(@.label == '内部执行事件')]").value(hasSize(1)));
     }
 
     @Test

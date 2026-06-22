@@ -77,15 +77,19 @@ public class FinalReportService {
     }
 
     private FinalReportResponse generate(Long userId, Long resumeId, Long jobId, Long taskId) {
+        if (taskId == null) {
+            throw new BusinessException("TASK_ID_REQUIRED", "Final reports must be generated from one career task",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        if (jobId == null) {
+            throw new BusinessException("JOB_REQUIRED", "Job is required to generate final report",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
+        }
         Resume resume = resumeRepository.findByIdAndUserId(resumeId, userId)
                 .orElseThrow(() -> new BusinessException("RESUME_NOT_FOUND", "Resume not found", HttpStatus.NOT_FOUND));
         Job job = jobRepository.findLockedByIdAndUserId(jobId, userId)
                 .orElseThrow(() -> new BusinessException("JOB_NOT_FOUND", "Job not found", HttpStatus.NOT_FOUND));
 
-        if (taskId == null) {
-            throw new BusinessException("TASK_ID_REQUIRED", "Final reports must be generated from one career task",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
         JobMatchReport match = jobMatchRepository.findByUserIdAndTaskId(userId, taskId).orElse(null);
         ResumeAnalysisReport analysis = resumeAnalysisRepository.findByUserIdAndTaskId(userId, taskId).orElse(null);
         List<InterviewQuestion> questions = questionRepository
