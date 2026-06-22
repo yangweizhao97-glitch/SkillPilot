@@ -83,7 +83,7 @@ public class UserVisibleTaskEventMapper {
             case MATCHING_JOB -> matchingSubstep(tools);
             case ANALYZING_RESUME -> UserStep.RESUME_OPTIMIZATION;
             case GENERATING_QUESTIONS -> UserStep.INTERVIEW_QUESTIONS;
-            case GENERATING_FINAL_REPORT, SUCCESS -> UserStep.FINAL_REPORT;
+            case GENERATING_FINAL_REPORT, GENERATING_LEARNING_PLAN, SUCCESS -> UserStep.FINAL_REPORT;
             case FAILED -> UserStep.READING_INPUTS;
         };
     }
@@ -295,6 +295,7 @@ public class UserVisibleTaskEventMapper {
             case ANALYZING_RESUME -> "简历分析";
             case GENERATING_QUESTIONS -> "面试题生成";
             case GENERATING_FINAL_REPORT -> "报告整理";
+            case GENERATING_LEARNING_PLAN -> "学习计划生成";
             case SUCCESS -> "任务完成";
             case FAILED -> "任务失败";
         };

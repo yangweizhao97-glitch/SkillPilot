@@ -9,7 +9,9 @@ import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.resume.Resume;
 import com.huatai.careeragent.resume.ResumeRepository;
+import com.huatai.careeragent.task.log.AgentExecutionLog;
 import com.huatai.careeragent.task.log.AgentExecutionLogRepository;
+import com.huatai.careeragent.task.log.ExecutionLogStatus;
 import com.huatai.careeragent.user.User;
 import com.huatai.careeragent.user.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -181,6 +183,41 @@ class CareerTaskControllerTest {
                 .andExpect(jsonPath("$.data.items[2].errorMessage").value("matching provider unavailable"))
                 .andExpect(jsonPath("$.data.steps[?(@.status == 'FAILED')]").value(hasSize(1)))
                 .andExpect(jsonPath("$.data.steps[0].type").value("TASK_FAILED"));
+    }
+
+    @Test
+    void progressToleratesLearningPlanAgentLogs() throws Exception {
+        AuthenticatedResources owner = createAuthenticatedResources();
+
+        String response = mockMvc.perform(post("/api/career-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resumeId": %d,
+                                  "jobId": %d
+                                }
+                                """.formatted(owner.resumeId(), owner.jobId()))
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Long taskId = objectMapper.readTree(response).path("data").path("taskId").asLong();
+        AgentTask completed = awaitStatus(taskId, WorkflowStatus.SUCCESS);
+
+        executionLogRepository.save(AgentExecutionLog.agentExecution(
+                completed.getUserId(), completed.getId(), completed.getTraceId(),
+                "LEARNING_PLAN_AGENT", "GENERATING_LEARNING_PLAN", "taskId=" + taskId,
+                "learningPlanId=1", ExecutionLogStatus.STEP_COMPLETED, 1200,
+                com.huatai.careeragent.llm.LlmResponse.TokenUsage.empty(), null
+        ));
+
+        mockMvc.perform(get("/api/career-tasks/{taskId}/progress", taskId)
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.taskId").value(taskId))
+                .andExpect(jsonPath("$.data.steps[?(@.step == 'FINAL_REPORT')]").value(hasSize(1)))
+                .andExpect(jsonPath("$.data.technicalDetails[?(@.label == '学习计划生成')]").value(hasSize(1)));
     }
 
     @Test

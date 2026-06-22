@@ -487,7 +487,23 @@ function TaskList({ tasks, onSelect }: { tasks: CareerTask[]; onSelect: (id: num
 function TaskDetail({ id, onBack, onChanged, onRetry, onReport }: { id: number; onBack: () => void; onChanged: () => Promise<void>; onRetry: (id: number) => void; onReport: (id: number) => void }) {
   const [task, setTask] = useState<CareerTask | null>(null); const [steps, setSteps] = useState<UserTaskStep[]>([]); const [technicalDetails, setTechnicalDetails] = useState<TechnicalDetail[]>([]); const [reportId, setReportId] = useState<number | null>(null); const [error, setError] = useState('')
   const refreshReport = useCallback(async () => { const reports = await api.reports(); setReportId(reports.find(report => report.taskId === id)?.reportId || null) }, [id])
-  const load = useCallback(async () => { try { const [next, progress] = await Promise.all([api.task(id), api.taskProgress(id)]); setTask(next); setSteps(progress.steps || []); setTechnicalDetails(progress.technicalDetails || []); if (next.status === 'SUCCESS') void refreshReport() } catch (reason) { setError(reason instanceof Error ? reason.message : '加载失败') } }, [id, refreshReport])
+  const load = useCallback(async () => {
+    try {
+      const next = await api.task(id)
+      setTask(next)
+      setError('')
+      if (next.status === 'SUCCESS') void refreshReport()
+      try {
+        const progress = await api.taskProgress(id)
+        setSteps(progress.steps || [])
+        setTechnicalDetails(progress.technicalDetails || [])
+      } catch (reason) {
+        setError(reason instanceof Error ? `执行过程加载失败：${reason.message}` : '执行过程加载失败')
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '加载失败')
+    }
+  }, [id, refreshReport])
   useEffect(() => {
     const controller = new AbortController(); let disposed = false; let terminal = false; let lastEventId: string | undefined; let retryTimer = 0; let retryDelay = 500
     const upsertStep = (item: UserTaskStep) => setSteps(current => current.some(step => step.step === item.step)
@@ -522,7 +538,7 @@ function TaskDetail({ id, onBack, onChanged, onRetry, onReport }: { id: number; 
     retryTimer = window.setTimeout(() => { void load(); void connect() }, 0)
     return () => { disposed = true; controller.abort(); window.clearTimeout(retryTimer) }
   }, [id, load, refreshReport])
-  if (!task) return <div className="loading-line">正在加载任务...</div>
+  if (!task) return error ? <div className="alert"><CircleAlert size={16} />{error}</div> : <div className="loading-line">正在加载任务...</div>
   return <><button className="back-link" onClick={onBack}><ArrowLeft size={16} />返回任务列表</button>
     <section className="task-head"><div><Status status={task.status} /><h2>{task.status === 'SUCCESS' ? '分析已完成' : task.status === 'FAILED' ? '分析未完成' : 'Agent 正在分析'}</h2><p>任务 #{task.taskId} · 简历与岗位智能分析</p></div><div className="progress-ring" style={{ '--progress': `${task.progress * 3.6}deg` } as CSSProperties}><span>{task.progress}%</span></div></section>
     {task.status === 'FAILED' && <div className="alert"><CircleAlert size={16} />任务在“{steps.find(step => step.status === 'FAILED')?.title || '当前步骤'}”未能完成<button className="secondary small" onClick={async () => { const next = await api.retryTask(id); await onChanged(); onRetry(next.taskId) }}>重试该任务</button></div>}
