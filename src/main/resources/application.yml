@@ -65,6 +65,12 @@ career-agent:
   rag:
     default-top-k: ${RAG_DEFAULT_TOP_K:8}
     max-top-k: ${RAG_MAX_TOP_K:20}
+  public-knowledge:
+    search:
+      enabled: ${PUBLIC_KNOWLEDGE_SEARCH_ENABLED:false}
+      tool-name: ${PUBLIC_KNOWLEDGE_SEARCH_TOOL:search_web}
+      allowed-domains: ${PUBLIC_KNOWLEDGE_ALLOWED_DOMAINS:}
+      max-results: ${PUBLIC_KNOWLEDGE_SEARCH_MAX_RESULTS:10}
   chunking:
     target-tokens: ${CHUNK_TARGET_TOKENS:700}
     overlap-tokens: ${CHUNK_OVERLAP_TOKENS:100}

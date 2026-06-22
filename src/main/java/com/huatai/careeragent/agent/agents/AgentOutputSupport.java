@@ -10,6 +10,7 @@ import com.huatai.careeragent.agent.schema.SchemaRepairService.RepairResult;
 import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.SearchPublicInterviewKnowledgeTool;
 import com.huatai.careeragent.llm.LlmResponse.TokenUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +62,14 @@ public class AgentOutputSupport {
             allowed.add(jobCitationId(job));
         }
         items.forEach(item -> allowed.add(item.citationId()));
+        return allowed;
+    }
+
+    public Set<String> allowedCitationIds(GetResumeTool.Output resume, GetJobDescriptionTool.Output job,
+                                          List<SearchUserKnowledgeBaseTool.Item> privateItems,
+                                          SearchPublicInterviewKnowledgeTool.Output publicKnowledge) {
+        Set<String> allowed = allowedCitationIds(resume, job, privateItems);
+        publicKnowledge.items().forEach(item -> allowed.add(item.citationId()));
         return allowed;
     }
 

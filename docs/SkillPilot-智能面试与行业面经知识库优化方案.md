@@ -644,3 +644,41 @@ POST /api/learning-plans
 ```
 
 该方案延续项目当前的任务隔离、Tool Registry、Schema 校验、引用、流式事件和审计设计，不通过绕开现有安全边界来换取新功能。
+
+---
+
+## 16. 批次四实施记录（2026-06-22）
+
+已完成公共面经库的第一版生产链路：
+
+- V18 新增独立的公共来源、面经和公共题目表，不复用私人文档的 `user_id` 数据域。
+- 支持结构化人工导入，以及百炼对粘贴文本进行结构化抽取；模型 JSON 必须经过独立 Schema 校验。
+- 导入内容经过联系方式脱敏、Prompt Injection 清理、内容哈希与问题哈希去重。
+- 来源必须依次完成导入、向量化处理和管理员审核；只有 `APPROVED/PUBLISHED` 数据可以被检索。
+- 公共检索支持行业、岗位、公司、职级和轮次过滤，并组合向量相关度、关键词、来源质量和时效性排序。
+- `searchPublicInterviewKnowledge` 已进入 Tool Registry，并授权给面试题与学习计划 Agent；Tutor 同时检索私人资料和公共题库。
+- 搜索 MCP 适配器默认关闭，要求工具白名单与域名白名单；发现结果只作为候选来源，不能绕过审核直接发布。
+
+新增接口：
+
+```text
+GET  /api/interview-knowledge/search
+POST /api/admin/interview-knowledge/sources
+POST /api/admin/interview-knowledge/sources/extract
+POST /api/admin/interview-knowledge/sources/discover
+POST /api/admin/interview-knowledge/sources/{sourceId}/process
+POST /api/admin/interview-knowledge/sources/{sourceId}/review
+GET  /api/admin/interview-knowledge/sources/{sourceId}
+```
+
+外部搜索启用条件：
+
+```text
+PUBLIC_KNOWLEDGE_SEARCH_ENABLED=true
+PUBLIC_KNOWLEDGE_SEARCH_TOOL=search_web
+PUBLIC_KNOWLEDGE_ALLOWED_DOMAINS=nowcoder.com,example-authorized-domain.com
+MCP_ENABLED=true
+MCP_ALLOWED_TOOLS=search_web
+```
+
+代码完成不等于已经拥有第三方内容授权。生产数据仍需由管理员导入授权资料，或配置符合平台规则的正式搜索服务后逐条审核发布。

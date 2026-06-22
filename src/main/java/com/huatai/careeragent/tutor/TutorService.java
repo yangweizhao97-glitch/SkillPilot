@@ -11,6 +11,8 @@ import com.huatai.careeragent.interview.InterviewQuestionRepository;
 import com.huatai.careeragent.job.JobRepository;
 import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchRequest;
 import com.huatai.careeragent.knowledge.retrieval.KnowledgeSearchService;
+import com.huatai.careeragent.knowledge.interview.PublicKnowledgeSearchDtos.SearchRequest;
+import com.huatai.careeragent.knowledge.interview.PublicKnowledgeSearchService;
 import com.huatai.careeragent.knowledge.retrieval.RetrievalMode;
 import com.huatai.careeragent.learning.LearningPlan;
 import com.huatai.careeragent.learning.LearningPlanRepository;
@@ -49,6 +51,7 @@ public class TutorService {
     private final InterviewAnswerEvaluationRepository evaluationRepository;
     private final LearningPlanRepository learningPlanRepository;
     private final KnowledgeSearchService knowledgeSearchService;
+    private final PublicKnowledgeSearchService publicKnowledgeSearchService;
     private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactions;
@@ -58,7 +61,8 @@ public class TutorService {
                         InterviewQuestionRepository questionRepository,
                         InterviewAnswerEvaluationRepository evaluationRepository,
                         LearningPlanRepository learningPlanRepository,
-                        KnowledgeSearchService knowledgeSearchService, LlmClient llmClient,
+                        KnowledgeSearchService knowledgeSearchService,
+                        PublicKnowledgeSearchService publicKnowledgeSearchService, LlmClient llmClient,
                         ObjectMapper objectMapper, PlatformTransactionManager transactionManager) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
@@ -68,6 +72,7 @@ public class TutorService {
         this.evaluationRepository = evaluationRepository;
         this.learningPlanRepository = learningPlanRepository;
         this.knowledgeSearchService = knowledgeSearchService;
+        this.publicKnowledgeSearchService = publicKnowledgeSearchService;
         this.llmClient = llmClient;
         this.objectMapper = objectMapper;
         this.transactions = new TransactionTemplate(transactionManager);
@@ -176,6 +181,29 @@ public class TutorService {
             context.add(Map.copyOf(source));
             citations.add(citation(item.citationId(), "PRIVATE_" + item.sourceType().name(),
                     item.sourceTitle(), item.sourceLocator(), snippet(item.content())));
+        });
+        String company = null;
+        String position = null;
+        if (session.getJobId() != null) {
+            var job = jobRepository.findByIdAndUserId(session.getJobId(), session.getUserId()).orElseThrow();
+            company = job.getCompany();
+            position = job.getPosition();
+        }
+        var publicKnowledge = publicKnowledgeSearchService.search(
+                new SearchRequest(query, null, position, company, null, null, 6));
+        publicKnowledge.items().forEach(item -> {
+            Map<String, Object> source = new LinkedHashMap<>();
+            source.put("citationId", item.citationId());
+            source.put("sourceType", "PUBLIC_INTERVIEW_KNOWLEDGE");
+            source.put("title", item.sourceTitle());
+            source.put("question", item.question());
+            source.put("answerOutline", item.answerOutline());
+            if (item.referenceAnswer() != null && !item.referenceAnswer().isBlank()) {
+                source.put("referenceAnswer", item.referenceAnswer());
+            }
+            context.add(Map.copyOf(source));
+            citations.add(citation(item.citationId(), "PUBLIC_INTERVIEW_KNOWLEDGE",
+                    item.sourceTitle(), item.sourceUrl(), snippet(item.question())));
         });
         if (session.getQuestionId() != null) {
             InterviewQuestion question = questionRepository.findByIdAndUserId(

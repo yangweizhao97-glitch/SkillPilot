@@ -124,8 +124,11 @@ class CareerWorkflowIntegrationTest {
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
         assertThat(interviewQuestionRepository.findAll()).hasSize(2);
         assertThat(finalReportRepository.findAll()).hasSize(1);
-        // Includes the schema-repair LLM call; repair work must be visible in the tool timeline.
-        assertThat(toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId)).hasSize(13);
+        // Includes schema repair and the public interview knowledge lookup; both must be visible in the timeline.
+        var toolCalls = toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId);
+        assertThat(toolCalls).hasSize(14);
+        assertThat(toolCalls).extracting(log -> log.getToolName())
+                .contains("searchPublicInterviewKnowledge");
         var executionLogs = executionLogRepository
                 .findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(fullTaskId, completed.getUserId());
         assertThat(executionLogs)

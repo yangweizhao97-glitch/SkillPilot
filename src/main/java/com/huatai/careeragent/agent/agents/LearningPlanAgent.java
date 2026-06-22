@@ -7,6 +7,7 @@ import com.huatai.careeragent.agent.schema.SchemaRepairService;
 import com.huatai.careeragent.agent.schema.SchemaRepairService.RepairResult;
 import com.huatai.careeragent.agent.tool.AgentNames;
 import com.huatai.careeragent.agent.tool.GetFinalReportTool;
+import com.huatai.careeragent.agent.tool.SearchPublicInterviewKnowledgeTool;
 import com.huatai.careeragent.learning.LearningPlanResponse;
 import com.huatai.careeragent.learning.LearningPlanStore;
 import com.huatai.careeragent.learning.LearningPlanEvidenceService;
@@ -47,11 +48,14 @@ public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, Learnin
     public AgentResult<LearningPlanResponse> execute(Input input, AgentContext context) {
         GetFinalReportTool.Output report = tools.finalReport(input.taskId(), context, name());
         var evidence = evidenceService.collect(context.userId(), input.resumeId(), input.jobId());
+        SearchPublicInterviewKnowledgeTool.Output publicKnowledge = tools.searchPublic(
+                learningQuery(input.spec()), input.spec().targetIndustry(), input.spec().targetPosition(),
+                input.spec().targetCompany(), input.spec().experienceLevel(), null, context, name());
         String instruction = PromptCatalog.LEARNING_PLAN.instruction() + "\n" + modeInstruction(input.spec());
         LlmResponse response = llm.complete(LlmRequest.secured(
                 PromptCatalog.LEARNING_PLAN.systemPrompt(), instruction,
                 List.of(outputSupport.json(report.report()), outputSupport.json(input.spec().requestJson()),
-                        outputSupport.json(evidence)), context.traceId(), true
+                        outputSupport.json(evidence), outputSupport.json(publicKnowledge)), context.traceId(), true
         ), context, name());
         String schema = input.spec().resolvedMode() == LearningPlanMode.SPRINT
                 ? "learning_plan_sprint.schema.json" : "learning_plan_long_term.schema.json";
@@ -83,6 +87,12 @@ public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, Learnin
         }
         return "生成 LONG_TERM 长期成长计划，按周安排 phases 和 milestones，包含项目产出、阶段模拟面试、"
                 + "练习题，并根据真实评分与复盘缺口说明 adjustmentReason。";
+    }
+    private String learningQuery(LearningPlanGenerationSpec spec) {
+        return String.join(" ", java.util.stream.Stream.of(spec.targetCompany(), spec.targetPosition(),
+                        spec.targetIndustry(), spec.experienceLevel(), String.join(" ", spec.focusAreas()),
+                        "面试 高频问题 学习")
+                .filter(value -> value != null && !value.isBlank()).toList());
     }
     public record Input(Long taskId, Long reportId, String generationId,
                         LearningPlanGenerationSpec spec, Long resumeId, Long jobId) { }

@@ -7,6 +7,7 @@ import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.GetFinalReportTool;
 import com.huatai.careeragent.agent.tool.CallMcpTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.SearchPublicInterviewKnowledgeTool;
 import com.huatai.careeragent.agent.tool.ToolExecutionContext;
 import com.huatai.careeragent.agent.tool.ToolExecutor;
 import com.huatai.careeragent.agent.tool.ToolRequest;
@@ -43,6 +44,15 @@ public class AgentToolGateway {
                         8, RetrievalMode.HYBRID),
                 context, agentName, SearchUserKnowledgeBaseTool.Output.class
         );
+    }
+
+    public SearchPublicInterviewKnowledgeTool.Output searchPublic(
+            String query, String industry, String position, String company, String experienceLevel,
+            String interviewRound, AgentContext context, String agentName) {
+        return invoke(SearchPublicInterviewKnowledgeTool.NAME,
+                new SearchPublicInterviewKnowledgeTool.Input(query, industry, position, company,
+                        experienceLevel, interviewRound, 8), context, agentName,
+                SearchPublicInterviewKnowledgeTool.Output.class);
     }
 
     public CallMcpTool.Output mcp(String toolName, Map<String, Object> arguments, AgentContext context, String agentName) {

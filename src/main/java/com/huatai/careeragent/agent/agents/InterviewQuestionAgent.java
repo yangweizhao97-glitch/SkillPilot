@@ -9,6 +9,7 @@ import com.huatai.careeragent.agent.tool.AgentNames;
 import com.huatai.careeragent.agent.tool.GetJobDescriptionTool;
 import com.huatai.careeragent.agent.tool.GetResumeTool;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.SearchPublicInterviewKnowledgeTool;
 import com.huatai.careeragent.interview.InterviewQuestionService;
 import com.huatai.careeragent.interview.InterviewQuestionService.InterviewQuestionResponse;
 import com.huatai.careeragent.llm.LlmRequest;
@@ -44,7 +45,10 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
         GetResumeTool.Output resume = tools.resume(input.resumeId(), context, name());
         GetJobDescriptionTool.Output job = tools.job(input.jobId(), context, name());
         SearchUserKnowledgeBaseTool.Output knowledge = tools.search(job.position() + " interview projects", context, name());
-        Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items());
+        SearchPublicInterviewKnowledgeTool.Output publicKnowledge = tools.searchPublic(
+                job.position() + " 面试 高频问题 项目", null, job.position(), job.company(), null, null,
+                context, name());
+        Set<String> allowedCitations = outputSupport.allowedCitationIds(resume, job, knowledge.items(), publicKnowledge);
         LlmResponse response = llmClient.complete(LlmRequest.secured(
                 PromptCatalog.INTERVIEW_QUESTIONS.systemPrompt(),
                 PromptCatalog.INTERVIEW_QUESTIONS.instruction() + " "
@@ -52,7 +56,8 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
                 List.of(
                         outputSupport.citedJson(outputSupport.resumeCitationId(resume), resume),
                         outputSupport.citedJson(outputSupport.jobCitationId(job), job),
-                        outputSupport.json(knowledge)
+                        outputSupport.json(knowledge),
+                        outputSupport.json(publicKnowledge)
                 ),
                 context.traceId(), true
         ), context, name());

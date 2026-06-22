@@ -71,6 +71,20 @@ class JsonSchemaValidatorTest {
     }
 
     @Test
+    void validatesPublicKnowledgeExtractionContract() {
+        String valid = """
+                {"experiences":[{"industry":"互联网","company":"示例公司","position":"Java 后端",
+                "experienceLevel":null,"interviewRound":"二面","summary":"系统设计面试","tags":["Java"],
+                "eventDate":null,"questions":[{"question":"如何设计限流？","questionType":"SYSTEM_DESIGN",
+                "difficulty":"MEDIUM","knowledgePoints":["令牌桶"],"answerOutline":["明确目标"],
+                "referenceAnswer":"按容量设计","scoringRubric":[],"commonMistakes":[],"followUpCandidates":[]}]}]}
+                """;
+        assertThat(validator.validate("public_interview_knowledge_extraction.schema.json", valid).valid()).isTrue();
+        assertThat(validator.validate("public_interview_knowledge_extraction.schema.json",
+                valid.replace("\"SYSTEM_DESIGN\"", "\"UNKNOWN\"")).valid()).isFalse();
+    }
+
+    @Test
     void repairsInvalidOutputWithLlmAndRejectsFailedRepair() {
         LlmClient llmClient = mock(LlmClient.class);
         SchemaRepairService repairService = new SchemaRepairService(validator, llmClient);
