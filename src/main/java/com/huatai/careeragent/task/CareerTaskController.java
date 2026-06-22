@@ -6,6 +6,7 @@ import com.huatai.careeragent.common.api.PageResponse;
 import com.huatai.careeragent.task.CareerTaskDtos.CareerTaskResponse;
 import com.huatai.careeragent.task.CareerTaskDtos.CreateCareerTaskRequest;
 import com.huatai.careeragent.task.log.TaskLogDtos.TaskLogResponse;
+import com.huatai.careeragent.task.log.TaskLogDtos.UserTaskProgressResponse;
 import com.huatai.careeragent.task.log.TaskLogService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,6 +59,11 @@ public class CareerTaskController {
     @GetMapping("/{taskId}/logs")
     public ApiResponse<TaskLogResponse> logs(CurrentUser currentUser, @PathVariable Long taskId) {
         return ApiResponse.ok(taskLogService.list(currentUser.userId(), taskId));
+    }
+
+    @GetMapping("/{taskId}/progress")
+    public ApiResponse<UserTaskProgressResponse> progress(CurrentUser currentUser, @PathVariable Long taskId) {
+        return ApiResponse.ok(taskLogService.progress(currentUser.userId(), taskId));
     }
 
     @GetMapping(value = "/{taskId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

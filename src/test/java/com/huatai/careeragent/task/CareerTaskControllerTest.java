@@ -121,6 +121,12 @@ class CareerTaskControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.taskId").value(taskId))
                 .andExpect(jsonPath("$.data.traceId").value(completed.getTraceId()))
+                .andExpect(jsonPath("$.data.steps.length()").value(7))
+                .andExpect(jsonPath("$.data.steps[0].step").value("READING_INPUTS"))
+                .andExpect(jsonPath("$.data.steps[0].title").value("读取简历和岗位描述"))
+                .andExpect(jsonPath("$.data.steps[6].step").value("FINAL_REPORT"))
+                .andExpect(jsonPath("$.data.steps[6].summary").value("报告已生成"))
+                .andExpect(jsonPath("$.data.steps[?(@.status == 'RUNNING')]").value(hasSize(0)))
                 .andExpect(jsonPath("$.data.items.length()").value(13))
                 .andExpect(jsonPath("$.data.items[?(@.status == 'HANDOFF_COMPLETED')]").value(hasSize(3)))
                 .andExpect(jsonPath("$.data.items[0].workflowStatus").value("PENDING"))
@@ -172,7 +178,9 @@ class CareerTaskControllerTest {
                 .andExpect(jsonPath("$.data.items.length()").value(3))
                 .andExpect(jsonPath("$.data.items[2].workflowStatus").value("MATCHING_JOB"))
                 .andExpect(jsonPath("$.data.items[2].status").value("STEP_FAILED"))
-                .andExpect(jsonPath("$.data.items[2].errorMessage").value("matching provider unavailable"));
+                .andExpect(jsonPath("$.data.items[2].errorMessage").value("matching provider unavailable"))
+                .andExpect(jsonPath("$.data.steps[?(@.status == 'FAILED')]").value(hasSize(1)))
+                .andExpect(jsonPath("$.data.steps[0].type").value("TASK_FAILED"));
     }
 
     @Test
@@ -236,7 +244,7 @@ class CareerTaskControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
                 .andExpect(content().string(containsString("event:TASK_SNAPSHOT")))
                 .andExpect(content().string(containsString("\"resumedAfterEventId\":\"step-previous\"")))
-                .andExpect(content().string(containsString("event:STEP_EVENT")))
+                .andExpect(content().string(containsString("event:USER_STEP_EVENT")))
                 .andExpect(content().string(containsString("event:TASK_STREAM_COMPLETED")));
 
         mockMvc.perform(get("/api/career-tasks/{taskId}/events", taskId)

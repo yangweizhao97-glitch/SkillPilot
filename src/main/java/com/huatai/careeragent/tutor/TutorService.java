@@ -3,6 +3,7 @@ package com.huatai.careeragent.tutor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.huatai.careeragent.common.error.BusinessException;
+import com.huatai.careeragent.document.DocumentRepository;
 import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.interview.InterviewAnswerEvaluation;
 import com.huatai.careeragent.interview.InterviewAnswerEvaluationRepository;
@@ -41,11 +42,17 @@ public class TutorService {
     private static final List<FileType> PRIVATE_SOURCES = List.of(
             FileType.RESUME, FileType.JD, FileType.NOTE, FileType.PROJECT_DOC
     );
-    private static final int MAX_CONTEXT_MESSAGES = 12;
+    private static final int RECENT_CONTEXT_MESSAGES = 12;
+    private static final int MAX_MEMORY_CHARS = 6000;
+    private static final int MAX_MESSAGE_MEMORY_CHARS = 500;
+    private static final int MAX_SOURCE_CONTENT_CHARS = 2400;
+    private static final double MIN_PRIVATE_RELEVANCE = 0.60;
+    private static final double MIN_PUBLIC_RELEVANCE = 0.70;
 
     private final TutorSessionRepository sessionRepository;
     private final TutorMessageRepository messageRepository;
     private final ResumeRepository resumeRepository;
+    private final DocumentRepository documentRepository;
     private final JobRepository jobRepository;
     private final InterviewQuestionRepository questionRepository;
     private final InterviewAnswerEvaluationRepository evaluationRepository;
@@ -57,7 +64,8 @@ public class TutorService {
     private final TransactionTemplate transactions;
 
     public TutorService(TutorSessionRepository sessionRepository, TutorMessageRepository messageRepository,
-                        ResumeRepository resumeRepository, JobRepository jobRepository,
+                        ResumeRepository resumeRepository, DocumentRepository documentRepository,
+                        JobRepository jobRepository,
                         InterviewQuestionRepository questionRepository,
                         InterviewAnswerEvaluationRepository evaluationRepository,
                         LearningPlanRepository learningPlanRepository,
@@ -67,6 +75,7 @@ public class TutorService {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.resumeRepository = resumeRepository;
+        this.documentRepository = documentRepository;
         this.jobRepository = jobRepository;
         this.questionRepository = questionRepository;
         this.evaluationRepository = evaluationRepository;
@@ -109,8 +118,8 @@ public class TutorService {
                                                  Consumer<String> onDelta) {
         TutorWork work = begin(userId, sessionId, content);
         try {
-            SourceContext sources = sources(work.session(), content);
-            String promptContext = promptContext(work, sources);
+            SourceContext sources = sources(work.session(), work.retrievalQuery());
+            String promptContext = promptContext(work, sources, content);
             String traceId = "tutor_" + sessionId + "_" + UUID.randomUUID().toString().replace("-", "");
             StringBuilder streamed = new StringBuilder();
             var llmResponse = llmClient.stream(LlmRequest.secured(
@@ -144,7 +153,10 @@ public class TutorService {
             addMessage(session, TutorMessageRole.USER, normalized, List.of());
             List<TutorMessage> history = messageRepository
                     .findByUserIdAndSessionIdOrderBySequenceNoAsc(userId, sessionId);
-            return new TutorWork(session, bounded(history));
+            String memory = compactMemory(session, history);
+            List<TutorMessage> recent = bounded(history);
+            boolean firstTurn = history.size() == 1;
+            return new TutorWork(session, recent, memory, retrievalQuery(history, normalized), firstTurn);
         }));
     }
 
@@ -170,14 +182,16 @@ public class TutorService {
     private SourceContext sources(TutorSession session, String query) {
         List<Map<String, Object>> context = new ArrayList<>();
         List<Map<String, Object>> citations = new ArrayList<>();
+        addAnchoredResume(session, context, citations);
+        addAnchoredJob(session, context, citations);
         var knowledge = knowledgeSearchService.search(session.getUserId(),
-                new KnowledgeSearchRequest(query, PRIVATE_SOURCES, 6, RetrievalMode.HYBRID));
-        knowledge.items().forEach(item -> {
+                new KnowledgeSearchRequest(query, PRIVATE_SOURCES, 5, RetrievalMode.HYBRID));
+        knowledge.items().stream().filter(item -> item.score() >= MIN_PRIVATE_RELEVANCE).forEach(item -> {
             Map<String, Object> source = new LinkedHashMap<>();
             source.put("citationId", item.citationId());
             source.put("sourceType", item.sourceType().name());
             source.put("title", item.sourceTitle() == null ? "用户资料" : item.sourceTitle());
-            source.put("content", item.content());
+            source.put("content", limit(item.content(), MAX_SOURCE_CONTENT_CHARS));
             context.add(Map.copyOf(source));
             citations.add(citation(item.citationId(), "PRIVATE_" + item.sourceType().name(),
                     item.sourceTitle(), item.sourceLocator(), snippet(item.content())));
@@ -190,8 +204,8 @@ public class TutorService {
             position = job.getPosition();
         }
         var publicKnowledge = publicKnowledgeSearchService.search(
-                new SearchRequest(query, null, position, company, null, null, 6));
-        publicKnowledge.items().forEach(item -> {
+                new SearchRequest(query, null, position, company, null, null, 4));
+        publicKnowledge.items().stream().filter(item -> item.score() >= MIN_PUBLIC_RELEVANCE).forEach(item -> {
             Map<String, Object> source = new LinkedHashMap<>();
             source.put("citationId", item.citationId());
             source.put("sourceType", "PUBLIC_INTERVIEW_KNOWLEDGE");
@@ -199,7 +213,7 @@ public class TutorService {
             source.put("question", item.question());
             source.put("answerOutline", item.answerOutline());
             if (item.referenceAnswer() != null && !item.referenceAnswer().isBlank()) {
-                source.put("referenceAnswer", item.referenceAnswer());
+                source.put("referenceAnswer", limit(item.referenceAnswer(), MAX_SOURCE_CONTENT_CHARS));
             }
             context.add(Map.copyOf(source));
             citations.add(citation(item.citationId(), "PUBLIC_INTERVIEW_KNOWLEDGE",
@@ -232,14 +246,43 @@ public class TutorService {
         return new SourceContext(List.copyOf(context), List.copyOf(citations));
     }
 
-    private String promptContext(TutorWork work, SourceContext sources) {
+    private void addAnchoredResume(TutorSession session, List<Map<String, Object>> context,
+                                   List<Map<String, Object>> citations) {
+        if (session.getResumeId() == null) return;
+        var resume = resumeRepository.findByIdAndUserId(session.getResumeId(), session.getUserId()).orElseThrow();
+        var document = documentRepository.findByIdAndUserId(resume.getDocumentId(), session.getUserId()).orElseThrow();
+        String citationId = "resume_" + resume.getId();
+        context.add(Map.of("citationId", citationId, "sourceType", "ANCHORED_RESUME",
+                "title", resume.getTitle(), "content", limit(document.getContentText(), MAX_SOURCE_CONTENT_CHARS)));
+        citations.add(citation(citationId, "ANCHORED_RESUME", resume.getTitle(), null,
+                snippet(document.getContentText())));
+    }
+
+    private void addAnchoredJob(TutorSession session, List<Map<String, Object>> context,
+                                List<Map<String, Object>> citations) {
+        if (session.getJobId() == null) return;
+        var job = jobRepository.findByIdAndUserId(session.getJobId(), session.getUserId()).orElseThrow();
+        String citationId = "job_" + job.getId();
+        String title = (job.getCompany() == null || job.getCompany().isBlank() ? "" : job.getCompany() + " · ")
+                + job.getPosition();
+        context.add(Map.of("citationId", citationId, "sourceType", "ANCHORED_JOB", "title", title,
+                "content", limit(job.getJdText(), MAX_SOURCE_CONTENT_CHARS)));
+        citations.add(citation(citationId, "ANCHORED_JOB", title, null, snippet(job.getJdText())));
+    }
+
+    private String promptContext(TutorWork work, SourceContext sources, String currentMessage) {
         try {
-            return objectMapper.writeValueAsString(Map.of(
-                    "conversation", work.history().stream().map(message -> Map.of(
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("sessionMemory", work.memory());
+            payload.put("memoryRevision", work.session().getMemoryRevision());
+            payload.put("conversationState", work.firstTurn() ? "FIRST_TURN" : "CONTINUING");
+            payload.put("recentConversation", work.history().stream().map(message -> Map.of(
                             "role", message.getRole().name(), "content", message.getContent()
-                    )).toList(),
-                    "retrievedSources", sources.context()
-            ));
+                    )).toList());
+            payload.put("currentMessage", currentMessage);
+            payload.put("retrievalQuery", work.retrievalQuery());
+            payload.put("retrievedSources", sources.context());
+            return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize tutor context", exception);
         }
@@ -265,7 +308,43 @@ public class TutorService {
     }
 
     private List<TutorMessage> bounded(List<TutorMessage> messages) {
-        return List.copyOf(messages.subList(Math.max(0, messages.size() - MAX_CONTEXT_MESSAGES), messages.size()));
+        return List.copyOf(messages.subList(Math.max(0, messages.size() - RECENT_CONTEXT_MESSAGES), messages.size()));
+    }
+
+    private String compactMemory(TutorSession session, List<TutorMessage> messages) {
+        int cutoff = Math.max(0, messages.size() - RECENT_CONTEXT_MESSAGES);
+        List<TutorMessage> candidates = messages.subList(0, cutoff).stream()
+                .filter(message -> message.getSequenceNo() > session.getMemoryThroughSequence()).toList();
+        if (candidates.isEmpty()) return session.getMemorySummary();
+        StringBuilder summary = new StringBuilder(session.getMemorySummary());
+        for (TutorMessage message : candidates) {
+            if (!summary.isEmpty()) summary.append('\n');
+            summary.append(message.getRole() == TutorMessageRole.USER ? "用户：" : "导师：")
+                    .append(limit(normalize(message.getContent()), MAX_MESSAGE_MEMORY_CHARS));
+            if (!message.getCitations().isEmpty()) {
+                summary.append("（引用：").append(message.getCitations().stream()
+                        .map(value -> String.valueOf(value.get("citationId"))).limit(4)
+                        .collect(java.util.stream.Collectors.joining("、"))).append("）");
+            }
+        }
+        String memory = summary.length() <= MAX_MEMORY_CHARS ? summary.toString()
+                : "较早对话已继续压缩：\n…" + summary.substring(summary.length() - MAX_MEMORY_CHARS + 12);
+        int through = candidates.getLast().getSequenceNo();
+        session.updateMemory(memory, through);
+        return memory;
+    }
+
+    private String retrievalQuery(List<TutorMessage> history, String current) {
+        return limit(current, 1200);
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", " ").trim();
+    }
+
+    private String limit(String value, int maxLength) {
+        if (value == null) return "";
+        return value.length() <= maxLength ? value : value.substring(0, maxLength) + "…";
     }
 
     private TutorMessage addMessage(TutorSession session, TutorMessageRole role, String content,
@@ -303,12 +382,14 @@ public class TutorService {
                 .map(TutorMessageResponse::from).toList();
         return new TutorSessionResponse(session.getId(), session.getTitle(), session.getResumeId(), session.getJobId(),
                 session.getQuestionId(), session.getEvaluationId(), session.getLearningPlanId(),
-                session.isProcessing(), messages, session.getCreatedAt(), session.getUpdatedAt());
+                session.isProcessing(), session.getMemoryRevision(), session.getMemoryThroughSequence(),
+                messages, session.getCreatedAt(), session.getUpdatedAt());
     }
 
     public record CreateTutorSessionRequest(String title, Long resumeId, Long jobId, Long questionId,
                                             Long evaluationId, Long learningPlanId) { }
-    private record TutorWork(TutorSession session, List<TutorMessage> history) { }
+    private record TutorWork(TutorSession session, List<TutorMessage> history, String memory,
+                             String retrievalQuery, boolean firstTurn) { }
     private record SourceContext(List<Map<String, Object>> context, List<Map<String, Object>> citations) { }
     public record TutorMessageResponse(Long messageId, TutorMessageRole role, String content,
                                        List<Map<String, Object>> citations, int sequenceNo, Instant createdAt) {
@@ -319,6 +400,7 @@ public class TutorService {
     }
     public record TutorSessionResponse(Long sessionId, String title, Long resumeId, Long jobId, Long questionId,
                                        Long evaluationId, Long learningPlanId, boolean processing,
+                                       int memoryRevision, int memoryThroughSequence,
                                        List<TutorMessageResponse> messages, Instant createdAt, Instant updatedAt) { }
     public record TutorSessionSummary(Long sessionId, String title, boolean processing,
                                       Instant createdAt, Instant updatedAt) {

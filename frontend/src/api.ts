@@ -4,7 +4,7 @@ export type Resume = { resumeId: number; documentId: number; title: string; late
 export type Job = { jobId: number; documentId?: number; company?: string; position: string; jdText: string; createdAt: string }
 export type CareerTask = {
   taskId: number; traceId: string; status: string; progress: number; resumeId: number; jobId: number;
-  enabledSteps: string[]; errorMessage?: string; createdAt: string; updatedAt: string; finishedAt?: string
+  enabledSteps: string[]; errorMessage?: string; createdAt: string; updatedAt: string; startedAt?: string; finishedAt?: string
 }
 export type TaskLog = {
   logId: number; agentName: string; stepName: string; workflowStatus: string; progress: number; status: string;
@@ -14,6 +14,20 @@ export type ToolCall = {
   toolCallId: string; agentName: string; toolName: string; inputSummary?: Record<string, unknown>;
   resultSummary?: Record<string, unknown>; status: 'TOOL_STARTED' | 'TOOL_COMPLETED' | 'TOOL_FAILED';
   durationMs?: number; errorMessage?: string; updatedAt: string
+}
+export type UserTaskStepName = 'READING_INPUTS' | 'ANALYZING_REQUIREMENTS' | 'RETRIEVING_CONTEXT' |
+  'JOB_MATCHING' | 'RESUME_OPTIMIZATION' | 'INTERVIEW_QUESTIONS' | 'FINAL_REPORT'
+export type UserTaskStep = {
+  type: 'STEP_STARTED' | 'STEP_PROGRESS' | 'STEP_COMPLETED' | 'TASK_COMPLETED' | 'TASK_FAILED';
+  step: UserTaskStepName; title: string; summary: string; status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  startedAt?: string; completedAt?: string; durationMs?: number; progress: string[];
+  details: { label: string; status: string; durationMs?: number; occurredAt?: string; source?: string }[]
+}
+export type TechnicalDetail = {
+  category: string; label: string; status: string; durationMs?: number; occurredAt?: string; safeSummary: string
+}
+export type TaskProgress = {
+  taskId: number; steps: UserTaskStep[]; technicalDetails: TechnicalDetail[]
 }
 export type ReportSummary = {
   reportId: number; taskId?: number; resumeId: number; jobId: number; version: number; status: string;
@@ -86,10 +100,11 @@ export type TutorMessage = {
 }
 export type TutorSession = TutorSessionSummary & {
   resumeId?: number; jobId?: number; questionId?: number; evaluationId?: number; learningPlanId?: number;
+  memoryRevision: number; memoryThroughSequence: number;
   messages: TutorMessage[]
 }
 export type TaskEventSnapshot = {
-  task: CareerTask; logs: TaskLog[]; toolCalls: ToolCall[];
+  task: CareerTask; steps: UserTaskStep[]; technicalDetails: TechnicalDetail[];
   resumedAfterEventId?: string; synchronizedAt: string
 }
 
@@ -126,7 +141,9 @@ export const api = {
   jobs: () => request<PageData<Job>>('/api/jobs?pageSize=100'),
   tasks: () => request<PageData<CareerTask>>('/api/career-tasks?pageSize=50'),
   task: (id: number) => request<CareerTask>(`/api/career-tasks/${id}`),
-  logs: (id: number) => request<{ taskId: number; traceId: string; items: TaskLog[]; toolCalls: ToolCall[] }>(`/api/career-tasks/${id}/logs`),
+  logs: (id: number) => request<{ taskId: number; traceId: string; items: TaskLog[]; toolCalls: ToolCall[];
+    steps: UserTaskStep[]; technicalDetails: TechnicalDetail[] }>(`/api/career-tasks/${id}/logs`),
+  taskProgress: (id: number) => request<TaskProgress>(`/api/career-tasks/${id}/progress`),
   streamTaskEvents: async (id: number, lastEventId: string | undefined,
     onEvent: (event: string, data: Record<string, unknown>, eventId?: string) => void,
     signal: AbortSignal) => {

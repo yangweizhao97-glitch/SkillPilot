@@ -34,7 +34,7 @@ describe('API client', () => {
     session.set('stream-token')
     const body = [
       'id:snapshot-1', 'event:TASK_SNAPSHOT', 'data:{"task":{"taskId":1}}', '',
-      'id:step-9', 'event:STEP_EVENT', 'data:{"logId":9}', '', '',
+      'id:user-step-1', 'event:USER_STEP_EVENT', 'data:{"step":"JOB_MATCHING"}', '', '',
     ].join('\n')
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, {
       status: 200, headers: { 'Content-Type': 'text/event-stream' },
@@ -46,7 +46,7 @@ describe('API client', () => {
 
     expect(events).toEqual([
       { event: 'TASK_SNAPSHOT', id: 'snapshot-1' },
-      { event: 'STEP_EVENT', id: 'step-9' },
+      { event: 'USER_STEP_EVENT', id: 'user-step-1' },
     ])
     const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>
     expect(headers.Authorization).toBe('Bearer stream-token')

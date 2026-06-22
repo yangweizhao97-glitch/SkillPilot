@@ -10,20 +10,14 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/admin/interview-knowledge/sources")
 public class PublicKnowledgeAdminController {
     private final PublicKnowledgeAdminService service;
-    private final PublicKnowledgeDiscoveryService discoveryService;
     private final PublicKnowledgeExtractionService extractionService;
     private final PublicKnowledgeQualityService qualityService;
-    private final PublicKnowledgeCollectionService collectionService;
     public PublicKnowledgeAdminController(PublicKnowledgeAdminService service,
-                                          PublicKnowledgeDiscoveryService discoveryService,
                                           PublicKnowledgeExtractionService extractionService,
-                                          PublicKnowledgeQualityService qualityService,
-                                          PublicKnowledgeCollectionService collectionService) {
+                                          PublicKnowledgeQualityService qualityService) {
         this.service = service;
-        this.discoveryService = discoveryService;
         this.extractionService = extractionService;
         this.qualityService = qualityService;
-        this.collectionService = collectionService;
     }
 
     @PostMapping
@@ -45,12 +39,6 @@ public class PublicKnowledgeAdminController {
     @GetMapping("/{sourceId}")
     public ApiResponse<SourceResponse> get(@PathVariable Long sourceId) { return ApiResponse.ok(service.get(sourceId)); }
 
-    @PostMapping("/discover")
-    public ApiResponse<PublicKnowledgeDiscoveryService.DiscoveryResponse> discover(
-            @Valid @RequestBody PublicKnowledgeDiscoveryService.DiscoveryRequest request) {
-        return ApiResponse.ok(discoveryService.discover(request));
-    }
-
     @PostMapping("/extract")
     public ApiResponse<SourceResponse> extract(CurrentUser user,
             @Valid @RequestBody PublicKnowledgeExtractionService.ExtractRequest request) {
@@ -61,11 +49,5 @@ public class PublicKnowledgeAdminController {
     public ApiResponse<PublicKnowledgeQualityService.QualityReviewResponse> qualityReview(
             @PathVariable Long sourceId) {
         return ApiResponse.ok(qualityService.review(sourceId));
-    }
-
-    @PostMapping("/collect")
-    public ApiResponse<PublicKnowledgeCollectionService.CollectionResponse> collect(CurrentUser user,
-            @Valid @RequestBody PublicKnowledgeCollectionService.CollectionRequest request) {
-        return ApiResponse.ok(collectionService.collect(user.userId(), request));
     }
 }

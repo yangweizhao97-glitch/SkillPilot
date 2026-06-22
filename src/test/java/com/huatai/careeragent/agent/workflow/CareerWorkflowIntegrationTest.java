@@ -279,7 +279,7 @@ class CareerWorkflowIntegrationTest {
     }
 
     @Test
-    void streamsRealToolCallUpdatesFromStartedToCompleted() throws Exception {
+    void streamsUserVisibleStepUpdatesWithoutRawToolPayloads() throws Exception {
         Resources owner = createResources();
         when(llmClient.complete(any())).thenAnswer(invocation -> {
             Thread.sleep(180);
@@ -299,8 +299,9 @@ class CareerWorkflowIntegrationTest {
         mockMvc.perform(asyncDispatch(stream))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("event:TASK_SNAPSHOT")))
-                .andExpect(content().string(containsString("event:TOOL_EVENT")))
-                .andExpect(content().string(containsString("TOOL_COMPLETED")))
+                .andExpect(content().string(containsString("event:USER_STEP_EVENT")))
+                .andExpect(content().string(containsString("RETRIEVING_CONTEXT")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(containsString("inputSummary"))))
                 .andExpect(content().string(containsString("event:TASK_STREAM_COMPLETED")));
     }
 

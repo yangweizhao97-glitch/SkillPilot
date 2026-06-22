@@ -14,6 +14,7 @@ __pycache__/
 .DS_Store
 
 data/*.db
+data/
 data/uploads/
 data/exports/
 tmp/pdfs/

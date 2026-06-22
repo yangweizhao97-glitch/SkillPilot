@@ -4,7 +4,7 @@ import {
   Download, FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
   Sparkles, Square, Trash2, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type TutorSession, type TutorSessionSummary, type User } from './api'
+import { api, session, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TechnicalDetail, type TutorSession, type TutorSessionSummary, type User, type UserTaskStep } from './api'
 import './App.css'
 
 type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews' | 'tutor'
@@ -125,7 +125,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
       <header className="topbar"><button className="icon menu-button" onClick={() => setMenuOpen(true)} aria-label="打开菜单"><Menu /></button><div><span className="eyebrow">CAREER WORKSPACE</span><h1>{title}</h1></div><button className="icon" onClick={() => void load()} title="刷新"><RefreshCw /></button></header>
       {error && <div className="global-alert"><CircleAlert size={17} />{error}</div>}
       <div className="content">
-        {selectedTask ? <TaskDetail id={selectedTask} onBack={() => setSelectedTask(null)} onChanged={load} /> :
+        {selectedTask ? <TaskDetail id={selectedTask} onBack={() => setSelectedTask(null)} onChanged={load} onRetry={setSelectedTask} onReport={reportId => { setView('reports'); setSelectedTask(null); setSelectedReport(reportId) }} /> :
          selectedReport ? <ReportDetailView id={selectedReport} onBack={() => setSelectedReport(null)} /> :
          view === 'overview' ? <Overview tasks={tasks} reports={reports} resumes={resumes} jobs={jobs} onNew={() => navigate('prepare')} onTask={id => { setView('tasks'); setSelectedTask(id) }} onReport={id => { setView('reports'); setSelectedReport(id) }} /> :
          view === 'prepare' ? <Prepare resumes={resumes} jobs={jobs} onCreated={async id => { await load(); setView('tasks'); setSelectedTask(id) }} onResourcesChanged={load} /> :
@@ -177,7 +177,7 @@ function TutorWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] }) {
     finally { setBusy(false) }
   }
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!active || !question.trim()) return
+    event.preventDefault(); if (busy || !active || !question.trim()) return
     const content = question.trim(); setQuestion(''); setBusy(true); setError(''); setStreamText(''); setState('TUTOR_MESSAGE_RECEIVED')
     setActive(current => current ? { ...current, messages: [...current.messages, {
       messageId: -Date.now(), role: 'USER', content, citations: [], sequenceNo: current.messages.length + 1,
@@ -203,10 +203,10 @@ function TutorWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] }) {
       <Field label="关联岗位（可选）"><select value={jobId} onChange={event => setJobId(Number(event.target.value))}><option value={0}>不关联</option>{jobs.map(item => <option key={item.jobId} value={item.jobId}>{item.company ? `${item.company} · ` : ''}{item.position}</option>)}</select></Field>
       <button className="primary wide" disabled={busy} onClick={() => void createSession()}><Bot size={16} />开始答疑</button>
     </div><div className="tutor-session-list"><SectionTitle title="历史答疑" />{sessions.map(item => <div className={active?.sessionId === item.sessionId ? 'tutor-session active' : 'tutor-session'} key={item.sessionId}><button onClick={() => void openSession(item.sessionId)}><strong>{item.title}</strong><span>{item.processing ? '回答生成中' : formatDate(item.updatedAt)}</span></button><button className="icon" title="删除" onClick={() => void removeSession(item.sessionId)}><Trash2 size={14} /></button></div>)}{!sessions.length && <Empty icon={<Bot />} text="暂无答疑会话" />}</div></aside>
-    <section className="tutor-room">{active ? <><header className="tutor-head"><div><span className="eyebrow">GROUNDED TUTOR</span><h2>{active.title}</h2></div><span>私人资料检索 · 多轮上下文</span></header>
+    <section className="tutor-room">{active ? <><header className="tutor-head"><div><span className="eyebrow">GROUNDED TUTOR</span><h2>{active.title}</h2></div><div className="tutor-context"><span>长期记忆 · 保留最近 {Math.min(12, active.messages.length)} 条原文</span>{active.resumeId && <span>简历：{resumes.find(item => item.resumeId === active.resumeId)?.title || `#${active.resumeId}`}</span>}{active.jobId && <span>岗位：{(() => { const job = jobs.find(item => item.jobId === active.jobId); return job ? `${job.company ? `${job.company} · ` : ''}${job.position}` : `#${active.jobId}` })()}</span>}</div></header>
       <div className="tutor-transcript" ref={transcriptRef}>{active.messages.map(message => <div className={`tutor-message ${message.role.toLowerCase()}`} key={message.messageId}><div className="message-role">{message.role === 'ASSISTANT' ? 'AI 导师' : '我'}</div><p>{message.content}</p>{message.citations.length > 0 && <div className="tutor-citations">{message.citations.map(citation => <article key={citation.citationId}><strong>{citation.title}</strong><span>{citation.sourceType}</span><p>{citation.snippet}</p><code>{citation.citationId}</code></article>)}</div>}<time>{formatDate(message.createdAt)}</time></div>)}
       {streamText && <div className="tutor-message assistant streaming"><div className="message-role">AI 导师</div><p>{streamText}</p></div>}{busy && <div className="thinking"><span /><span /><span /><small>{statusLabel[state] || state}</small></div>}</div>
-      <form className="answer-box" onSubmit={submit}><textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="可以问概念、面试题、项目表达或岗位重点" disabled={busy} maxLength={10000} /><button className="primary" disabled={busy || !question.trim()} title="发送问题"><Send size={17} /></button></form>
+      <form className="answer-box" onSubmit={submit}><textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder={busy ? '可以先输入下一条，当前回答完成后即可发送' : '可以追问、改写上一轮，或切换到新话题'} maxLength={10000} /><button className="primary" disabled={busy || !question.trim()} title={busy ? '当前回答完成后即可发送' : '发送问题'}><Send size={17} /></button></form>
     </> : <Empty icon={<Bot />} text="创建一场答疑，直接询问你不理解的概念" />}{error && <div className="alert interview-error"><CircleAlert size={16} />{error}</div>}</section>
   </div>
 }
@@ -484,27 +484,29 @@ function TaskList({ tasks, onSelect }: { tasks: CareerTask[]; onSelect: (id: num
   </section>
 }
 
-function TaskDetail({ id, onBack, onChanged }: { id: number; onBack: () => void; onChanged: () => Promise<void> }) {
-  const [task, setTask] = useState<CareerTask | null>(null); const [logs, setLogs] = useState<TaskLog[]>([]); const [tools, setTools] = useState<ToolCall[]>([]); const [error, setError] = useState('')
-  const load = useCallback(async () => { try { const [next, logData] = await Promise.all([api.task(id), api.logs(id)]); setTask(next); setLogs(logData.items); setTools(logData.toolCalls || []) } catch (reason) { setError(reason instanceof Error ? reason.message : '加载失败') } }, [id])
+function TaskDetail({ id, onBack, onChanged, onRetry, onReport }: { id: number; onBack: () => void; onChanged: () => Promise<void>; onRetry: (id: number) => void; onReport: (id: number) => void }) {
+  const [task, setTask] = useState<CareerTask | null>(null); const [steps, setSteps] = useState<UserTaskStep[]>([]); const [technicalDetails, setTechnicalDetails] = useState<TechnicalDetail[]>([]); const [reportId, setReportId] = useState<number | null>(null); const [error, setError] = useState('')
+  const refreshReport = useCallback(async () => { const reports = await api.reports(); setReportId(reports.find(report => report.taskId === id)?.reportId || null) }, [id])
+  const load = useCallback(async () => { try { const [next, progress] = await Promise.all([api.task(id), api.taskProgress(id)]); setTask(next); setSteps(progress.steps || []); setTechnicalDetails(progress.technicalDetails || []); if (next.status === 'SUCCESS') void refreshReport() } catch (reason) { setError(reason instanceof Error ? reason.message : '加载失败') } }, [id, refreshReport])
   useEffect(() => {
     const controller = new AbortController(); let disposed = false; let terminal = false; let lastEventId: string | undefined; let retryTimer = 0; let retryDelay = 500
-    const upsertLog = (item: TaskLog) => setLogs(current => current.some(log => log.logId === item.logId) ? current : [...current, item])
-    const upsertTool = (item: ToolCall) => setTools(current => current.some(tool => tool.toolCallId === item.toolCallId)
-      ? current.map(tool => tool.toolCallId === item.toolCallId ? item : tool) : [...current, item])
+    const upsertStep = (item: UserTaskStep) => setSteps(current => current.some(step => step.step === item.step)
+      ? current.map(step => step.step === item.step ? item : step) : [...current, item])
     const connect = async () => {
       try {
         await api.streamTaskEvents(id, lastEventId, (event, data, eventId) => {
           if (eventId) lastEventId = eventId
           if (event === 'TASK_SNAPSHOT') {
             const snapshot = data as unknown as TaskEventSnapshot
-            setTask(snapshot.task); setLogs(snapshot.logs); setTools(snapshot.toolCalls || [])
+            setTask(snapshot.task); setSteps(snapshot.steps || []); setTechnicalDetails(snapshot.technicalDetails || [])
             terminal = ['SUCCESS', 'FAILED'].includes(snapshot.task.status)
+            if (snapshot.task.status === 'SUCCESS') void refreshReport()
           } else if (event === 'TASK_UPDATED' || event === 'TASK_STREAM_COMPLETED') {
             const next = data as unknown as CareerTask; setTask(next)
             terminal = ['SUCCESS', 'FAILED'].includes(next.status)
-          } else if (event === 'STEP_EVENT') upsertLog(data as unknown as TaskLog)
-          else if (event === 'TOOL_EVENT') upsertTool(data as unknown as ToolCall)
+            if (next.status === 'SUCCESS') void refreshReport()
+          } else if (event === 'USER_STEP_EVENT') upsertStep(data as unknown as UserTaskStep)
+          else if (event === 'TECHNICAL_DETAILS_UPDATED') setTechnicalDetails(data as unknown as TechnicalDetail[])
           setError(''); retryDelay = 500
         }, controller.signal)
       } catch (reason) {
@@ -519,31 +521,26 @@ function TaskDetail({ id, onBack, onChanged }: { id: number; onBack: () => void;
     }
     retryTimer = window.setTimeout(() => { void load(); void connect() }, 0)
     return () => { disposed = true; controller.abort(); window.clearTimeout(retryTimer) }
-  }, [id, load])
+  }, [id, load, refreshReport])
   if (!task) return <div className="loading-line">正在加载任务...</div>
   return <><button className="back-link" onClick={onBack}><ArrowLeft size={16} />返回任务列表</button>
-    <section className="task-head"><div><Status status={task.status} /><h2>任务 #{task.taskId}</h2><code>{task.traceId}</code></div><div className="progress-ring" style={{ '--progress': `${task.progress * 3.6}deg` } as CSSProperties}><span>{task.progress}%</span></div></section>
-    {task.errorMessage && <div className="alert"><CircleAlert size={16} />{task.errorMessage}<button className="secondary small" onClick={async () => { const next = await api.retryTask(id); await onChanged(); setTask(next) }}>重试</button></div>}
-    <section className="plain-section"><SectionTitle title="执行轨迹" /><div className="timeline">{logs.map((log, index) => {
-      const stepTools = log.status === 'STEP_STARTED'
-        ? tools.filter(tool => tool.agentName === log.agentName)
-        : []
-      const completed = ['STEP_COMPLETED', 'HANDOFF_COMPLETED', 'TASK_COMPLETED'].includes(log.status); const failed = ['STEP_FAILED', 'HANDOFF_REJECTED'].includes(log.status)
-      const timing = log.durationMs != null ? `${log.durationMs} ms` : completed || failed ? '已记录' : '执行中'
-      return <div className="timeline-item" key={log.logId}><div className="timeline-dot">{completed ? <Check /> : failed ? <X /> : <Clock3 />}</div><div><div className="log-heading"><strong>{log.status.startsWith('HANDOFF_') ? 'Agent 交接' : statusLabel[log.stepName] || log.stepName}</strong><span>{timing}</span></div><p>{log.outputSummary || log.errorMessage || log.agentName}</p>{stepTools.length > 0 && <div className="tool-list">{stepTools.map(tool => <ToolCard key={tool.toolCallId} tool={tool} />)}</div>}<div className="log-meta"><code>{log.agentName}</code>{log.totalTokens != null && <span>{log.totalTokens} tokens</span>}<time>{formatDate(log.updatedAt)}</time></div></div>{index < logs.length - 1 && <span className="timeline-line" />}</div>
-    })}{!logs.length && <Empty icon={<Activity />} text="等待 Agent 开始执行" />}</div></section>
+    <section className="task-head"><div><Status status={task.status} /><h2>{task.status === 'SUCCESS' ? '分析已完成' : task.status === 'FAILED' ? '分析未完成' : 'Agent 正在分析'}</h2><p>任务 #{task.taskId} · 简历与岗位智能分析</p></div><div className="progress-ring" style={{ '--progress': `${task.progress * 3.6}deg` } as CSSProperties}><span>{task.progress}%</span></div></section>
+    {task.status === 'FAILED' && <div className="alert"><CircleAlert size={16} />任务在“{steps.find(step => step.status === 'FAILED')?.title || '当前步骤'}”未能完成<button className="secondary small" onClick={async () => { const next = await api.retryTask(id); await onChanged(); onRetry(next.taskId) }}>重试该任务</button></div>}
+    <section className="plain-section agent-process"><SectionTitle title="Agent 执行过程" /><div className="step-flow">{steps.map((step, index) => <AgentStep key={step.step} step={step} last={index === steps.length - 1} />)}{!steps.length && <Empty icon={<Activity />} text="正在准备本次分析" />}</div>
+      {task.status === 'SUCCESS' && <div className="report-ready"><div><Check size={18} /><span><strong>报告已生成</strong><small>岗位匹配、简历建议和面试题已整理完成</small></span></div><button className="primary" disabled={!reportId} onClick={() => reportId && onReport(reportId)}><FileText size={16} />{reportId ? '查看报告' : '正在准备报告…'}</button></div>}
+    </section>
+    <details className="technical-details"><summary>技术详情 <span>已脱敏，默认隐藏</span></summary><div>{technicalDetails.map((detail, index) => <div className="technical-row" key={`${detail.category}-${detail.occurredAt}-${index}`}><span>{detail.category}</span><strong>{detail.label}</strong><small>{friendlyTechnicalStatus(detail.status)}{detail.durationMs != null ? ` · ${formatDuration(detail.durationMs)}` : ''}</small><p>{detail.safeSummary}</p></div>)}{!technicalDetails.length && <p className="muted-copy">暂无技术事件</p>}</div></details>
     {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
   </>
 }
 
-function ToolCard({ tool }: { tool: ToolCall }) {
-  const done = tool.status === 'TOOL_COMPLETED'; const failed = tool.status === 'TOOL_FAILED'
-  return <div className={`tool-card ${failed ? 'failed' : done ? 'done' : 'running'}`}>
-    <div><code>{tool.toolName}</code><span>{done ? '成功' : failed ? '失败' : '运行中'}</span>{tool.durationMs != null && <small>{tool.durationMs} ms</small>}</div>
-    <p>{JSON.stringify(tool.inputSummary || {})}</p>
-    {(tool.resultSummary || tool.errorMessage) && <small>{tool.errorMessage || JSON.stringify(tool.resultSummary)}</small>}
-  </div>
+function AgentStep({ step, last }: { step: UserTaskStep; last: boolean }) {
+  const running = step.status === 'RUNNING'; const failed = step.status === 'FAILED'
+  return <article className={`agent-step ${step.status.toLowerCase()}`}><div className="step-rail"><span className="step-icon">{running ? <Clock3 /> : failed ? <X /> : <Check />}</span>{!last && <i />}</div><div className="step-content"><header><div><strong>{running ? `正在${step.title}` : step.title}</strong><p>{step.summary}</p></div><span className="step-status">{running ? '进行中' : failed ? '失败' : step.durationMs != null ? formatDuration(step.durationMs) : '已完成'}</span></header>{running && <ul className="step-progress">{step.progress.slice(0, 3).map(item => <li key={item}>{item}</li>)}</ul>}{step.details.length > 0 && <details className="step-details" open={running || undefined}><summary>查看详情</summary><div>{step.details.map((detail, index) => <div key={`${detail.label}-${index}`}><span>{detail.label}</span><small>{detail.source}{detail.durationMs != null ? ` · ${formatDuration(detail.durationMs)}` : ''}</small></div>)}</div></details>}</div></article>
 }
+
+function formatDuration(value: number) { return value < 1000 ? `${value} 毫秒` : value < 60000 ? `${(value / 1000).toFixed(value < 10000 ? 1 : 0)} 秒` : `${Math.floor(value / 60000)} 分 ${Math.round(value % 60000 / 1000)} 秒` }
+function friendlyTechnicalStatus(status: string) { return status.includes('FAILED') ? '失败' : status.includes('STARTED') ? '进行中' : '已完成' }
 
 function ReportList({ reports, onSelect }: { reports: ReportSummary[]; onSelect: (id: number) => void }) {
   return <section className="plain-section"><SectionTitle title={`${reports.length} 份报告`} /><div className="report-grid">{reports.map(report => <ReportRow key={report.reportId} report={report} onClick={() => onSelect(report.reportId)} />)}{!reports.length && <Empty icon={<BarChart3 />} text="暂无报告" />}</div></section>

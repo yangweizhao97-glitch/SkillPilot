@@ -1,9 +1,10 @@
 package com.huatai.careeragent.task;
 
 import com.huatai.careeragent.task.CareerTaskDtos.CareerTaskResponse;
-import com.huatai.careeragent.task.log.TaskLogDtos.TaskLogItem;
 import com.huatai.careeragent.task.log.TaskLogDtos.TaskLogResponse;
-import com.huatai.careeragent.task.log.TaskLogDtos.ToolCallItem;
+import com.huatai.careeragent.task.log.TaskLogDtos.TechnicalDetail;
+import com.huatai.careeragent.task.log.TaskLogDtos.UserStep;
+import com.huatai.careeragent.task.log.TaskLogDtos.UserVisibleStep;
 import com.huatai.careeragent.task.log.TaskLogService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -12,9 +13,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -51,11 +51,9 @@ public class CareerTaskEventStreamService {
                         SseEmitter emitter, AtomicBoolean closed) {
         try {
             send(emitter, closed, snapshotId(task), "TASK_SNAPSHOT",
-                    new Snapshot(task, logs.items(), logs.toolCalls(), lastEventId, Instant.now()));
-            Set<Long> seenLogs = new HashSet<>();
-            logs.items().forEach(item -> seenLogs.add(item.logId()));
-            Map<String, ToolCallItem> seenTools = new HashMap<>();
-            logs.toolCalls().forEach(item -> seenTools.put(item.toolCallId(), item));
+                    new Snapshot(task, logs.steps(), logs.technicalDetails(), lastEventId, Instant.now()));
+            Map<UserStep, UserVisibleStep> visibleSteps = indexSteps(logs.steps());
+            List<TechnicalDetail> technicalDetails = logs.technicalDetails();
             CareerTaskResponse previousTask = task;
             int idlePolls = 0;
 
@@ -69,18 +67,18 @@ public class CareerTaskEventStreamService {
                     previousTask = currentTask;
                     changed = true;
                 }
-                for (TaskLogItem item : currentLogs.items()) {
-                    if (seenLogs.add(item.logId())) {
-                        send(emitter, closed, "step-" + item.logId(), "STEP_EVENT", item);
+                for (UserVisibleStep item : currentLogs.steps()) {
+                    UserVisibleStep previous = visibleSteps.put(item.step(), item);
+                    if (!item.equals(previous)) {
+                        send(emitter, closed, userStepEventId(taskId, item), "USER_STEP_EVENT", item);
                         changed = true;
                     }
                 }
-                for (ToolCallItem item : currentLogs.toolCalls()) {
-                    ToolCallItem previous = seenTools.put(item.toolCallId(), item);
-                    if (!item.equals(previous)) {
-                        send(emitter, closed, toolEventId(item), "TOOL_EVENT", item);
-                        changed = true;
-                    }
+                if (!currentLogs.technicalDetails().equals(technicalDetails)) {
+                    technicalDetails = currentLogs.technicalDetails();
+                    send(emitter, closed, "details-" + taskId + "-" + currentTask.updatedAt().toEpochMilli(),
+                            "TECHNICAL_DETAILS_UPDATED", technicalDetails);
+                    changed = true;
                 }
                 idlePolls = changed ? 0 : idlePolls + 1;
                 if (idlePolls >= 30) {
@@ -117,12 +115,20 @@ public class CareerTaskEventStreamService {
         return "task-" + task.taskId() + "-" + task.updatedAt().toEpochMilli();
     }
 
-    private String toolEventId(ToolCallItem item) {
-        return "tool-" + item.toolCallId() + "-" + item.status();
+    private Map<UserStep, UserVisibleStep> indexSteps(List<UserVisibleStep> steps) {
+        Map<UserStep, UserVisibleStep> result = new HashMap<>();
+        steps.forEach(step -> result.put(step.step(), step));
+        return result;
     }
 
-    public record Snapshot(CareerTaskResponse task, java.util.List<TaskLogItem> logs,
-                           java.util.List<ToolCallItem> toolCalls, String resumedAfterEventId,
+    private String userStepEventId(Long taskId, UserVisibleStep item) {
+        Instant timestamp = item.completedAt() != null ? item.completedAt() : item.startedAt();
+        long epoch = timestamp == null ? 0 : timestamp.toEpochMilli();
+        return "user-step-" + taskId + "-" + item.step() + "-" + item.status() + "-" + epoch;
+    }
+
+    public record Snapshot(CareerTaskResponse task, List<UserVisibleStep> steps,
+                           List<TechnicalDetail> technicalDetails, String resumedAfterEventId,
                            Instant synchronizedAt) { }
     public record Heartbeat(Long taskId, Instant sentAt) { }
 }
