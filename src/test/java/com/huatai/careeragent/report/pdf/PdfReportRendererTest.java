@@ -2,7 +2,7 @@ package com.huatai.careeragent.report.pdf;
 
 import com.huatai.careeragent.learning.LearningPlan;
 import com.huatai.careeragent.report.FinalReport;
-import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,7 +27,7 @@ class PdfReportRendererTest {
         byte[] bytes = renderer.render(report(), Optional.of(plan()));
 
         assertThat(bytes).startsWith("%PDF".getBytes());
-        try (var document = Loader.loadPDF(bytes)) {
+        try (var document = PDDocument.load(bytes)) {
             String text = new PDFTextStripper().getText(document);
             assertThat(text).contains("职业分析报告", "岗位匹配", "简历分析", "面试题", "个性化学习计划", "Kafka");
             assertThat(document.getNumberOfPages()).isGreaterThanOrEqualTo(1);
@@ -50,7 +50,7 @@ class PdfReportRendererTest {
 
         byte[] bytes = new PdfReportRenderer(new PdfExportProperties()).render(
                 report(), Optional.of(new LearningPlan(1L, 10L, 1L, value)));
-        try (var document = Loader.loadPDF(bytes)) {
+        try (var document = PDDocument.load(bytes)) {
             assertThat(new PDFTextStripper().getText(document))
                     .contains("短期面试冲刺计划", "第 1 天", "事务传播");
         }

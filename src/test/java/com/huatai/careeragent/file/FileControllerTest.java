@@ -6,6 +6,10 @@ import com.huatai.careeragent.document.Document;
 import com.huatai.careeragent.document.DocumentRepository;
 import com.huatai.careeragent.knowledge.chunk.DocumentChunkRepository;
 import com.huatai.careeragent.user.UserRepository;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +22,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.util.FileSystemUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
@@ -185,6 +190,47 @@ class FileControllerTest {
         assertThat(document.getFileId()).isEqualTo(fileId);
         assertThat(document.getDocType()).isEqualTo(FileType.RESUME);
         assertThat(document.getContentText()).contains("Java backend developer");
+    }
+
+    @Test
+    void processesPdfResumeFile() throws Exception {
+        String token = registerAndLogin();
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "resume.pdf",
+                "application/pdf",
+                pdfBytes("Java backend developer with Spring Boot PostgreSQL")
+        );
+
+        String uploadResponse = mockMvc.perform(multipart("/api/files/upload")
+                        .file(file)
+                        .param("fileType", "RESUME")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Long fileId = objectMapper.readTree(uploadResponse).path("data").path("fileId").asLong();
+
+        String processResponse = mockMvc.perform(post("/api/files/{fileId}/process", fileId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("READY"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long documentId = objectMapper.readTree(processResponse).path("data").path("documentId").asLong();
+        UploadedFile uploadedFile = uploadedFileRepository.findById(fileId).orElseThrow();
+        Document document = documentRepository.findById(documentId).orElseThrow();
+        Integer embeddedCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM document_chunks WHERE document_id = ? AND embedding IS NOT NULL",
+                Integer.class,
+                documentId
+        );
+        assertThat(uploadedFile.getParseStatus()).isEqualTo(ParseStatus.READY);
+        assertThat(document.getContentText()).contains("Java backend developer");
+        assertThat(embeddedCount).isGreaterThan(0);
     }
 
     @Test
@@ -388,6 +434,22 @@ class FileControllerTest {
                 .getContentAsString();
 
         return objectMapper.readTree(response).path("data").path("documentId").asLong();
+    }
+
+    private byte[] pdfBytes(String text) throws Exception {
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.beginText();
+                content.setFont(PDType1Font.HELVETICA, 12);
+                content.newLineAtOffset(72, 720);
+                content.showText(text);
+                content.endText();
+            }
+            document.save(output);
+            return output.toByteArray();
+        }
     }
 
     private void chunkDocument(String token, Long documentId) throws Exception {
