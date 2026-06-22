@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
-  Activity, ArrowLeft, BarChart3, BookOpen, BriefcaseBusiness, Check, ChevronRight, CircleAlert, Clock3,
+  Activity, ArrowLeft, BarChart3, BookOpen, Bot, BriefcaseBusiness, Check, ChevronRight, CircleAlert, Clock3,
   Download, FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
-  Sparkles, Square, Upload, X
+  Sparkles, Square, Trash2, Upload, X
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type User } from './api'
+import { api, session, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TaskLog, type ToolCall, type TutorSession, type TutorSessionSummary, type User } from './api'
 import './App.css'
 
-type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews'
+type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews' | 'tutor'
 type InterviewItem = { questionId: number; question: string; questionType: string; difficulty: string; expectedPoints?: string[]; citations?: string[]; noCitationReason?: string }
 type AggregatedReport = {
   status: string; citations?: string[]; resume?: { title: string }; job?: { company?: string; position: string };
@@ -24,7 +24,9 @@ const statusLabel: Record<string, string> = {
   INTERVIEW_SCORING: '正在生成评分与建议', INTERVIEW_SCORE_COMPLETED: '评分完成',
   INTERVIEW_SCORE_FAILED: '本次评分暂不可用',
   INTERVIEW_FOLLOWUP_STREAMING: '正在生成追问或反馈', INTERVIEW_FEEDBACK_COMPLETED: '反馈完成',
-  INTERVIEW_NEXT_QUESTION: '进入下一题', INTERVIEW_COMPLETED: '面试完成', INTERVIEW_FAILED: '处理失败'
+  INTERVIEW_NEXT_QUESTION: '进入下一题', INTERVIEW_COMPLETED: '面试完成', INTERVIEW_FAILED: '处理失败',
+  TUTOR_MESSAGE_RECEIVED: '问题已接收', TUTOR_RETRIEVING: '正在检索资料',
+  TUTOR_GENERATING: '正在组织回答', TUTOR_COMPLETED: '回答完成', TUTOR_FAILED: '生成失败'
 }
 
 function App() {
@@ -104,7 +106,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
   }, [tasks, load])
 
   const navigate = (next: View) => { setView(next); setSelectedTask(null); setSelectedReport(null); setMenuOpen(false) }
-  const title = selectedTask ? '任务详情' : selectedReport ? '报告详情' : ({ overview: '工作台', prepare: '新建分析', tasks: '任务', reports: '报告', interviews: '模拟面试' } as const)[view]
+  const title = selectedTask ? '任务详情' : selectedReport ? '报告详情' : ({ overview: '工作台', prepare: '新建分析', tasks: '任务', reports: '报告', interviews: '模拟面试', tutor: 'AI 答疑' } as const)[view]
 
   return <div className="workspace">
     <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
@@ -115,6 +117,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         <NavButton active={view === 'tasks'} icon={<ListChecks />} label="任务" badge={tasks.filter(t => !['SUCCESS', 'FAILED'].includes(t.status)).length} onClick={() => navigate('tasks')} />
         <NavButton active={view === 'reports'} icon={<BarChart3 />} label="报告" onClick={() => navigate('reports')} />
         <NavButton active={view === 'interviews'} icon={<MessageSquare />} label="模拟面试" onClick={() => navigate('interviews')} />
+        <NavButton active={view === 'tutor'} icon={<Bot />} label="AI 答疑" onClick={() => navigate('tutor')} />
       </nav>
       <div className="account"><div className="avatar">{(user.nickname || user.email).slice(0, 1).toUpperCase()}</div><div><strong>{user.nickname || '用户'}</strong><span>{user.email}</span></div><button className="icon" onClick={onLogout} title="退出登录"><LogOut /></button></div>
     </aside>
@@ -128,10 +131,83 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
          view === 'prepare' ? <Prepare resumes={resumes} jobs={jobs} onCreated={async id => { await load(); setView('tasks'); setSelectedTask(id) }} onResourcesChanged={load} /> :
          view === 'tasks' ? <TaskList tasks={tasks} onSelect={setSelectedTask} /> :
          view === 'reports' ? <ReportList reports={reports} onSelect={setSelectedReport} /> :
-         <InterviewWorkspace resumes={resumes} jobs={jobs} />}
+         view === 'interviews' ? <InterviewWorkspace resumes={resumes} jobs={jobs} /> :
+         <TutorWorkspace resumes={resumes} jobs={jobs} />}
       </div>
     </main>
     {menuOpen && <button className="backdrop" onClick={() => setMenuOpen(false)} aria-label="关闭菜单" />}
+  </div>
+}
+
+function TutorWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] }) {
+  const [sessions, setSessions] = useState<TutorSessionSummary[]>([])
+  const [active, setActive] = useState<TutorSession | null>(null)
+  const [resumeId, setResumeId] = useState(0); const [jobId, setJobId] = useState(0)
+  const [question, setQuestion] = useState(''); const [streamText, setStreamText] = useState('')
+  const [state, setState] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState('')
+  const transcriptRef = useRef<HTMLDivElement>(null)
+
+  const loadSessions = useCallback(async () => {
+    try { setSessions(await api.tutorSessions()) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '答疑会话加载失败') }
+  }, [])
+  useEffect(() => { const timer = window.setTimeout(() => void loadSessions(), 0); return () => window.clearTimeout(timer) }, [loadSessions])
+  useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }) }, [active?.messages, streamText])
+
+  async function createSession() {
+    setBusy(true); setError('')
+    try {
+      const next = await api.createTutorSession({
+        title: 'AI 学习答疑', resumeId: resumeId || undefined, jobId: jobId || undefined
+      }); setActive(next); await loadSessions()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '答疑会话创建失败') }
+    finally { setBusy(false) }
+  }
+  async function openSession(id: number) {
+    setBusy(true); setError('')
+    try { setActive(await api.tutorSession(id)) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '答疑会话加载失败') }
+    finally { setBusy(false) }
+  }
+  async function removeSession(id: number) {
+    if (!window.confirm('确认删除这条答疑会话？')) return
+    setBusy(true); setError('')
+    try { await api.deleteTutorSession(id); if (active?.sessionId === id) setActive(null); await loadSessions() }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '答疑会话删除失败') }
+    finally { setBusy(false) }
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault(); if (!active || !question.trim()) return
+    const content = question.trim(); setQuestion(''); setBusy(true); setError(''); setStreamText(''); setState('TUTOR_MESSAGE_RECEIVED')
+    setActive(current => current ? { ...current, messages: [...current.messages, {
+      messageId: -Date.now(), role: 'USER', content, citations: [], sequenceNo: current.messages.length + 1,
+      createdAt: new Date().toISOString()
+    }] } : current)
+    try {
+      await api.streamTutorMessage(active.sessionId, content, (eventName, data) => {
+        setState(eventName)
+        if (eventName === 'TUTOR_DELTA') setStreamText(value => value + String(data.delta || ''))
+        const next = data.session as TutorSession | undefined
+        if (next) { setActive(next); setStreamText('') }
+      })
+      setActive(await api.tutorSession(active.sessionId)); await loadSessions()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '答疑生成失败')
+      try { setActive(await api.tutorSession(active.sessionId)) } catch { /* Preserve stream error. */ }
+    } finally { setBusy(false); setState('') }
+  }
+
+  return <div className="tutor-layout">
+    <aside className="tutor-panel"><div className="tutor-create"><SectionTitle title="新答疑" />
+      <Field label="关联简历（可选）"><select value={resumeId} onChange={event => setResumeId(Number(event.target.value))}><option value={0}>不关联</option>{resumes.map(item => <option key={item.resumeId} value={item.resumeId}>{item.title}</option>)}</select></Field>
+      <Field label="关联岗位（可选）"><select value={jobId} onChange={event => setJobId(Number(event.target.value))}><option value={0}>不关联</option>{jobs.map(item => <option key={item.jobId} value={item.jobId}>{item.company ? `${item.company} · ` : ''}{item.position}</option>)}</select></Field>
+      <button className="primary wide" disabled={busy} onClick={() => void createSession()}><Bot size={16} />开始答疑</button>
+    </div><div className="tutor-session-list"><SectionTitle title="历史答疑" />{sessions.map(item => <div className={active?.sessionId === item.sessionId ? 'tutor-session active' : 'tutor-session'} key={item.sessionId}><button onClick={() => void openSession(item.sessionId)}><strong>{item.title}</strong><span>{item.processing ? '回答生成中' : formatDate(item.updatedAt)}</span></button><button className="icon" title="删除" onClick={() => void removeSession(item.sessionId)}><Trash2 size={14} /></button></div>)}{!sessions.length && <Empty icon={<Bot />} text="暂无答疑会话" />}</div></aside>
+    <section className="tutor-room">{active ? <><header className="tutor-head"><div><span className="eyebrow">GROUNDED TUTOR</span><h2>{active.title}</h2></div><span>私人资料检索 · 多轮上下文</span></header>
+      <div className="tutor-transcript" ref={transcriptRef}>{active.messages.map(message => <div className={`tutor-message ${message.role.toLowerCase()}`} key={message.messageId}><div className="message-role">{message.role === 'ASSISTANT' ? 'AI 导师' : '我'}</div><p>{message.content}</p>{message.citations.length > 0 && <div className="tutor-citations">{message.citations.map(citation => <article key={citation.citationId}><strong>{citation.title}</strong><span>{citation.sourceType}</span><p>{citation.snippet}</p><code>{citation.citationId}</code></article>)}</div>}<time>{formatDate(message.createdAt)}</time></div>)}
+      {streamText && <div className="tutor-message assistant streaming"><div className="message-role">AI 导师</div><p>{streamText}</p></div>}{busy && <div className="thinking"><span /><span /><span /><small>{statusLabel[state] || state}</small></div>}</div>
+      <form className="answer-box" onSubmit={submit}><textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="可以问概念、面试题、项目表达或岗位重点" disabled={busy} maxLength={10000} /><button className="primary" disabled={busy || !question.trim()} title="发送问题"><Send size={17} /></button></form>
+    </> : <Empty icon={<Bot />} text="创建一场答疑，直接询问你不理解的概念" />}{error && <div className="alert interview-error"><CircleAlert size={16} />{error}</div>}</section>
   </div>
 }
 

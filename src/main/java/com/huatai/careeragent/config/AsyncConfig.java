@@ -43,6 +43,21 @@ public class AsyncConfig {
         return executor;
     }
 
+    @Bean(name = "tutorStreamExecutor")
+    public Executor tutorStreamExecutor(
+            @Value("${career-agent.tutor.stream-thread-pool-size:4}") int poolSize
+    ) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(poolSize);
+        executor.setMaxPoolSize(poolSize);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("tutor-stream-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        executor.initialize();
+        return executor;
+    }
+
     @Bean(name = "careerTaskStreamExecutor")
     public ExecutorService careerTaskStreamExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();

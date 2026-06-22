@@ -63,6 +63,20 @@ export type InterviewQuestionAnswer = {
   scoringRubric: { criterion: string; weight: number }[]; commonMistakes: string[];
   followUpCandidates: string[]; citations: string[]
 }
+export type TutorSessionSummary = {
+  sessionId: number; title: string; processing: boolean; createdAt: string; updatedAt: string
+}
+export type TutorCitation = {
+  citationId: string; sourceType: string; title: string; sourceLocator?: string; snippet: string
+}
+export type TutorMessage = {
+  messageId: number; role: 'USER' | 'ASSISTANT'; content: string; citations: TutorCitation[];
+  sequenceNo: number; createdAt: string
+}
+export type TutorSession = TutorSessionSummary & {
+  resumeId?: number; jobId?: number; questionId?: number; evaluationId?: number; learningPlanId?: number;
+  messages: TutorMessage[]
+}
 export type TaskEventSnapshot = {
   task: CareerTask; logs: TaskLog[]; toolCalls: ToolCall[];
   resumedAfterEventId?: string; synchronizedAt: string
@@ -189,6 +203,36 @@ export const api = {
     request<void>(`/api/interview/memory?resumeId=${resumeId}&jobId=${jobId}`, { method: 'DELETE' }),
   interviewQuestionAnswer: (questionId: number) =>
     request<InterviewQuestionAnswer>(`/api/interview/questions/${questionId}/answer`),
+  tutorSessions: () => request<TutorSessionSummary[]>('/api/tutor/sessions'),
+  tutorSession: (id: number) => request<TutorSession>(`/api/tutor/sessions/${id}`),
+  createTutorSession: (body: { title?: string; resumeId?: number; jobId?: number; questionId?: number; evaluationId?: number; learningPlanId?: number }) =>
+    request<TutorSession>('/api/tutor/sessions', { method: 'POST', body: JSON.stringify(body) }),
+  deleteTutorSession: (id: number) => request<void>(`/api/tutor/sessions/${id}`, { method: 'DELETE' }),
+  streamTutorMessage: async (id: number, content: string,
+    onEvent: (event: string, data: Record<string, unknown>) => void) => {
+    const response = await fetch(`/api/tutor/sessions/${id}/messages/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.get() || ''}` },
+      body: JSON.stringify({ content })
+    })
+    if (!response.ok || !response.body) throw new Error('AI 答疑连接失败')
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n'); buffer = frames.pop() || ''
+      for (const frame of frames) {
+        let event = 'message'; let data = ''
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          if (line.startsWith('data:')) data += line.slice(5).trim()
+        }
+        if (data) {
+          const parsed = JSON.parse(data) as Record<string, unknown>; onEvent(event, parsed)
+          if (event === 'TUTOR_FAILED') throw new Error(String(parsed.message || '答疑生成失败，请重试'))
+        }
+      }
+    }
+  },
   createTask: (resumeId: number, jobId: number) => request<CareerTask>('/api/career-tasks', {
     method: 'POST', body: JSON.stringify({ resumeId, jobId })
   }),

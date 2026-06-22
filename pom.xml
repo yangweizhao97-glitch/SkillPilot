@@ -130,6 +130,8 @@
 				<configuration>
 					<systemPropertyVariables>
 						<spring.datasource.url>jdbc:postgresql://localhost:5432/career_agent_test</spring.datasource.url>
+						<spring.datasource.hikari.maximum-pool-size>3</spring.datasource.hikari.maximum-pool-size>
+						<spring.datasource.hikari.minimum-idle>0</spring.datasource.hikari.minimum-idle>
 						<JWT_SECRET>career-agent-test-secret-at-least-32-characters</JWT_SECRET>
 					</systemPropertyVariables>
 				</configuration>
