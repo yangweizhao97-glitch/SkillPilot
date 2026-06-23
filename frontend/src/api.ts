@@ -34,6 +34,10 @@ export type ReportSummary = {
   resumeTitle: string; company?: string; position: string; createdAt: string
 }
 export type ReportDetail = ReportSummary & { report: Record<string, unknown>; exportStatus: string }
+export type LearningPlanInterviewQuestion = {
+  question: string; whyAsked: string; knowledgePoints: string[]; answerStrategy: string[];
+  referenceAnswer: string; practiceTasks: string[]; sourceMaterials: string[]
+}
 export type LearningPlan = {
   planId: number; taskId: number; reportId: number; schemaVersion: string; planMode: 'SPRINT' | 'LONG_TERM';
   interviewDate?: string; daysRemaining?: number; request: Record<string, unknown>; createdAt: string; updatedAt: string;
@@ -43,14 +47,16 @@ export type LearningPlan = {
     priorities: { priority: number; skill: string; gap: string; evidence: string }[];
     phases: { weekStart: number; weekEnd: number; title: string; goals: string[]; actions: string[]; deliverables: string[] }[];
     milestones: { week: number; outcome: string; verification: string }[]; successMetrics: string[];
-    practiceQuestions?: string[]; mockInterviewSchedule?: { week: number; focus: string }[];
+    practiceQuestions?: string[]; likelyInterviewQuestions?: LearningPlanInterviewQuestion[];
+    mockInterviewSchedule?: { week: number; focus: string }[];
     sourceMaterials?: string[]; adjustmentReason?: string
   } | {
     schemaVersion: string; planMode: 'SPRINT'; summary: string; targetRole: string; interviewDate: string;
     daysRemaining: number; availableHoursPerDay: number;
     priorities: { priority: number; skill: string; gap: string; evidence: string }[];
     dailyPlans: { day: number; date: string; focus: string; actions: string[]; questions: string[]; deliverables: string[] }[];
-    practiceQuestions: string[]; mockInterviewSchedule: { day: number; focus: string }[];
+    practiceQuestions: string[]; likelyInterviewQuestions: LearningPlanInterviewQuestion[];
+    mockInterviewSchedule: { day: number; focus: string }[];
     sourceMaterials: string[]; adjustmentReason: string; successMetrics: string[]
   })
 }

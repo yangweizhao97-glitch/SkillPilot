@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "planMode", "summary", "targetRole", "durationWeeks", "weeklyHours", "priorities", "phases", "milestones", "practiceQuestions", "mockInterviewSchedule", "sourceMaterials", "adjustmentReason", "successMetrics"],
+  "required": ["schemaVersion", "planMode", "summary", "targetRole", "durationWeeks", "weeklyHours", "priorities", "phases", "milestones", "practiceQuestions", "likelyInterviewQuestions", "mockInterviewSchedule", "sourceMaterials", "adjustmentReason", "successMetrics"],
   "properties": {
     "schemaVersion": {"const": "2.0"},
     "planMode": {"const": "LONG_TERM"},
@@ -23,6 +23,7 @@
     }},
     "milestones": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "object", "additionalProperties": false, "required": ["week", "outcome", "verification"], "properties": {"week": {"type": "integer", "minimum": 1, "maximum": 24}, "outcome": {"type": "string", "minLength": 1, "maxLength": 500}, "verification": {"type": "string", "minLength": 1, "maxLength": 500}}}},
     "practiceQuestions": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "likelyInterviewQuestions": {"type": "array", "minItems": 2, "maxItems": 12, "items": {"$ref": "#/$defs/likelyQuestion"}},
     "mockInterviewSchedule": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "object", "additionalProperties": false, "required": ["week", "focus"], "properties": {"week": {"type": "integer", "minimum": 1, "maximum": 24}, "focus": {"type": "string", "minLength": 1, "maxLength": 500}}}},
     "sourceMaterials": {"type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 300}},
     "adjustmentReason": {"type": "string", "minLength": 1, "maxLength": 1000},
@@ -34,6 +35,15 @@
       "skill": {"type": "string", "minLength": 1, "maxLength": 200},
       "gap": {"type": "string", "minLength": 1, "maxLength": 500},
       "evidence": {"type": "string", "minLength": 1, "maxLength": 500}
+    }},
+    "likelyQuestion": {"type": "object", "additionalProperties": false, "required": ["question", "whyAsked", "knowledgePoints", "answerStrategy", "referenceAnswer", "practiceTasks", "sourceMaterials"], "properties": {
+      "question": {"type": "string", "minLength": 1, "maxLength": 500},
+      "whyAsked": {"type": "string", "minLength": 1, "maxLength": 800},
+      "knowledgePoints": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+      "answerStrategy": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+      "referenceAnswer": {"type": "string", "minLength": 1, "maxLength": 3000},
+      "practiceTasks": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+      "sourceMaterials": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 300}}
     }}
   }
 }

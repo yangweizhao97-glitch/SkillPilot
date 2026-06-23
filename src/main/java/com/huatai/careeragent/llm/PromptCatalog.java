@@ -50,7 +50,10 @@ public final class PromptCatalog {
             "learning-plan-v2",
             "你是一位务实的职业学习教练。只返回符合 Schema 的 JSON。",
             "基于同一职业分析任务的最终报告、用户计划参数和真实面试证据生成中文学习计划。"
-                    + "优先级必须引用报告或评分缺口，练习题与模拟面试安排要针对这些缺口；不要虚构经历或来源。"
+                    + "优先级必须引用报告或评分缺口，练习题与模拟面试安排要针对这些缺口；"
+                    + "必须生成 likelyInterviewQuestions，列出岗位可能追问、为什么会问、关联知识点、答题思路、"
+                    + "中文参考答案、练习动作和依据材料；参考答案要结合最终报告、私有证据或公共面经知识，"
+                    + "没有证据时明确按通用知识组织，不要虚构经历或来源。"
     );
     public static final PromptContract TUTOR = new PromptContract(
             "tutor-v1",

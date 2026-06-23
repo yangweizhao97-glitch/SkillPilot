@@ -104,10 +104,11 @@ public class LearningPlanAgent implements Agent<LearningPlanAgent.Input, Learnin
     private String modeInstruction(LearningPlanGenerationSpec spec) {
         if (spec.resolvedMode() == LearningPlanMode.SPRINT) {
             return "生成 SPRINT 短期冲刺计划，按天安排 dailyPlans。优先覆盖岗位高频题、简历项目必问、"
-                    + "真实评分缺口、模拟面试和面试前检查；不要生成 phases 或 milestones。";
+                    + "真实评分缺口、模拟面试和面试前检查；likelyInterviewQuestions 要给出可直接练习的参考答案；"
+                    + "不要生成 phases 或 milestones。";
         }
         return "生成 LONG_TERM 长期成长计划，按周安排 phases 和 milestones，包含项目产出、阶段模拟面试、"
-                + "练习题，并根据真实评分与复盘缺口说明 adjustmentReason。";
+                + "练习题和 likelyInterviewQuestions，并根据真实评分与复盘缺口说明 adjustmentReason。";
     }
     private String learningQuery(LearningPlanGenerationSpec spec) {
         return String.join(" ", java.util.stream.Stream.of(spec.targetCompany(), spec.targetPosition(),

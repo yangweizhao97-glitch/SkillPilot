@@ -63,6 +63,10 @@ class JsonSchemaValidatorTest {
                 "priorities":[{"priority":1,"skill":"事务","gap":"案例不足","evidence":"面试评分"}],
                 "dailyPlans":[{"day":1,"date":"2026-06-22","focus":"事务","actions":["复盘传播行为"],"questions":["REQUIRES_NEW 如何工作？"],"deliverables":["口述稿"]}],
                 "practiceQuestions":["如何设计事务边界？"],"mockInterviewSchedule":[{"day":3,"focus":"完整模拟"}],
+                "likelyInterviewQuestions":[
+                  {"question":"REQUIRES_NEW 如何工作？","whyAsked":"岗位关注事务一致性，简历项目提到审计日志。","knowledgePoints":["事务传播"],"answerStrategy":["先定义事务边界"],"referenceAnswer":"REQUIRES_NEW 会开启独立事务，适合隔离审计写入。","practiceTasks":["准备项目口述稿"],"sourceMaterials":["最终报告"]},
+                  {"question":"事务失效如何排查？","whyAsked":"面试常追问 Spring 代理调用边界。","knowledgePoints":["代理失效"],"answerStrategy":["说明调用链"],"referenceAnswer":"先检查是否同类内部调用、方法可见性和异常回滚规则。","practiceTasks":["画出调用链"],"sourceMaterials":["公共面经"]}
+                ],
                 "sourceMaterials":["最终报告"],"adjustmentReason":"评分显示事务深度不足。","successMetrics":["五分钟讲清事务案例"]}
                 """;
         assertThat(validator.validate("learning_plan_sprint.schema.json", sprint).valid()).isTrue();

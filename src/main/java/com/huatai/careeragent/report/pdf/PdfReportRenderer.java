@@ -62,6 +62,11 @@ public class PdfReportRenderer {
                 Map<String, Object> question = map(raw);
                 writer.paragraph(number++ + ". " + text(question.get("question")));
                 writer.list("考察要点", list(question.get("expectedPoints")));
+                writer.list("答题思路", list(question.get("answerOutline")));
+                writer.paragraph("参考答案：" + text(question.get("referenceAnswer")));
+                writer.list("评分标准", rubric(question.get("scoringRubric")));
+                writer.list("常见错误", list(question.get("commonMistakes")));
+                writer.list("可能追问", list(question.get("followUpCandidates")));
             }
 
             writer.section("引用来源");
@@ -105,7 +110,25 @@ public class PdfReportRenderer {
         }
         }
         writer.list("专项练习题", list(plan.get("practiceQuestions")));
+        renderLikelyQuestions(writer, plan.get("likelyInterviewQuestions"));
         writer.list("成功指标", list(plan.get("successMetrics")));
+    }
+
+    private void renderLikelyQuestions(Writer writer, Object value) {
+        List<Object> questions = listObjects(value);
+        if (questions.isEmpty()) return;
+        writer.section("岗位可能追问与参考答案");
+        int number = 1;
+        for (Object raw : questions) {
+            Map<String, Object> item = map(raw);
+            writer.paragraph(number++ + ". " + text(item.get("question")));
+            writer.paragraph("为什么会问：" + text(item.get("whyAsked")));
+            writer.list("答题思路", list(item.get("answerStrategy")));
+            writer.paragraph("参考答案：" + text(item.get("referenceAnswer")));
+            writer.list("关联知识点", list(item.get("knowledgePoints")));
+            writer.list("练习动作", list(item.get("practiceTasks")));
+            writer.list("依据材料", list(item.get("sourceMaterials")));
+        }
     }
 
     private LoadedFont loadFont(PDDocument document) throws IOException {
@@ -166,6 +189,15 @@ public class PdfReportRenderer {
     }
     private static List<String> list(Object value) {
         return value instanceof Collection<?> values ? values.stream().map(PdfReportRenderer::text).filter(v -> !v.isBlank()).toList() : List.of();
+    }
+    private static List<String> rubric(Object value) {
+        return listObjects(value).stream().map(item -> {
+            Map<String, Object> raw = map(item);
+            String criterion = text(raw.get("criterion"));
+            String weight = text(raw.get("weight"));
+            if (criterion.isBlank()) return "";
+            return weight.isBlank() ? criterion : criterion + "（" + weight + "%）";
+        }).filter(text -> !text.isBlank()).toList();
     }
     private static List<String> concat(List<String> first, List<String> second) {
         List<String> result = new ArrayList<>(first); result.addAll(second); return result;

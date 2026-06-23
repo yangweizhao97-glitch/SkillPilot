@@ -148,6 +148,11 @@ public class FinalReportService {
             item.put("questionType", question.getQuestionType().name());
             item.put("difficulty", question.getDifficulty().name());
             item.put("expectedPoints", question.getExpectedPoints());
+            item.put("answerOutline", question.getAnswerOutline());
+            item.put("referenceAnswer", question.getReferenceAnswer());
+            item.put("scoringRubric", question.getScoringRubric());
+            item.put("commonMistakes", question.getCommonMistakes());
+            item.put("followUpCandidates", question.getFollowUpCandidates());
             item.put("citations", question.getCitations());
             item.put("noCitationReason", question.getNoCitationReason());
             return item;
