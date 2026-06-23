@@ -67,7 +67,8 @@ public class LangGraphWorkflowReplanner implements WorkflowReplanner {
         List<WorkflowStatus> statuses = planPolicy.validateRemotePlan(response.runId(), response.plannedStatuses(), task);
         return new WorkflowPlan(response.runId(), statuses.stream()
                 .filter(status -> status != WorkflowStatus.SUCCESS)
-                .map(status -> new WorkflowPlanStep(status, agentName(status), true, 2))
+                .map(status -> new WorkflowPlanStep(status, agentName(status),
+                        !task.getOptionalSteps().contains(status), 2))
                 .toList());
     }
 

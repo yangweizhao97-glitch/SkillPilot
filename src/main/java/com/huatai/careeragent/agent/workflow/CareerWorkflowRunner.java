@@ -84,8 +84,8 @@ public class CareerWorkflowRunner {
     }
 
     private RouteDecision executeRouted(WorkflowRuntime runtime) {
-        WorkflowPlanStep current = runtime.currentStep();
         while (true) {
+            WorkflowPlanStep current = runtime.currentStep();
             int attempt = runtime.currentAttempt();
             long started = System.nanoTime();
             WorkflowStepResult result = stepHandler.execute(runtime.taskId(), current.status());
@@ -101,12 +101,26 @@ public class CareerWorkflowRunner {
                 continue;
             }
             if (decision.action() == NextAction.REPLAN) {
-                workflowReplanner.replan(runtime, verification);
-                throw new IllegalStateException("Workflow replanning returned a candidate plan, but dynamic plan "
-                        + "replacement is not enabled for the current task state machine");
+                WorkflowPlan replanned = workflowReplanner.replan(runtime, verification);
+                applyReplan(runtime, current, replanned, result, verification);
+                continue;
             }
             return decision;
         }
+    }
+
+    private void applyReplan(WorkflowRuntime runtime, WorkflowPlanStep current, WorkflowPlan replanned,
+                             WorkflowStepResult result, VerificationResult verification) {
+        if (runtime.attempts(current.status()) >= current.maxAttempts()) {
+            throw new IllegalStateException("Required workflow step exhausted verification attempts before replan "
+                    + "could be applied: " + current.status());
+        }
+        runtime.replaceCurrentAndRemainingPlan(current.status(), replanned);
+        recordRetry(runtime.taskId(), current.status(), result,
+                VerificationResult.failed(NextAction.REPLAN,
+                        verification.reason() + "; appliedPlan=" + replanned.planId(),
+                        verification.metrics()),
+                runtime.attempts(current.status()) + 1);
     }
 
     private void recordArtifact(Long taskId, WorkflowStatus status, WorkflowStepResult result, int attempt,

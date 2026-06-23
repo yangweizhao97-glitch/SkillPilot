@@ -5,13 +5,14 @@ import com.huatai.careeragent.task.WorkflowStatus;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 public class WorkflowRuntime {
     private final Long taskId;
-    private final WorkflowPlan plan;
+    private WorkflowPlan plan;
     private final Map<WorkflowStatus, WorkflowStepResult> artifacts = new EnumMap<>(WorkflowStatus.class);
     private final Map<WorkflowStatus, VerificationResult> verifications = new EnumMap<>(WorkflowStatus.class);
     private final Map<WorkflowStatus, Integer> attempts = new EnumMap<>(WorkflowStatus.class);
@@ -58,6 +59,22 @@ public class WorkflowRuntime {
 
     public int attempts(WorkflowStatus status) {
         return attempts.getOrDefault(status, 0);
+    }
+
+    public void replaceCurrentAndRemainingPlan(WorkflowStatus currentStatus, WorkflowPlan candidate) {
+        int currentIndex = -1;
+        for (int index = 0; index < candidate.steps().size(); index++) {
+            if (candidate.steps().get(index).status() == currentStatus) {
+                currentIndex = index;
+                break;
+            }
+        }
+        if (currentIndex < 0) {
+            throw new IllegalArgumentException("Replanned workflow must include the current step: " + currentStatus);
+        }
+        List<WorkflowPlanStep> remaining = candidate.steps().subList(currentIndex, candidate.steps().size());
+        this.plan = new WorkflowPlan(candidate.planId(), remaining);
+        this.cursor = 0;
     }
 
     public void advance() {

@@ -69,4 +69,17 @@ class AgentTaskStateMachineTest {
 
         assertThat(task.getStatus()).isEqualTo(WorkflowStatus.SUCCESS);
     }
+
+    @Test
+    void allowsJumpingAcrossOptionalStepsWhenPlanIsRewritten() {
+        AgentTask task = new AgentTask(1L, "trace_test", 10L, 20L,
+                List.of(WorkflowStatus.ANALYZING_RESUME, WorkflowStatus.GENERATING_QUESTIONS),
+                List.of(WorkflowStatus.GENERATING_QUESTIONS));
+
+        task.transitionTo(WorkflowStatus.ANALYZING_RESUME);
+        task.transitionTo(WorkflowStatus.GENERATING_FINAL_REPORT);
+        task.transitionTo(WorkflowStatus.SUCCESS);
+
+        assertThat(task.getStatus()).isEqualTo(WorkflowStatus.SUCCESS);
+    }
 }

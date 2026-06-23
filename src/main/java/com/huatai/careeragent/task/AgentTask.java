@@ -116,7 +116,19 @@ public class AgentTask {
         if (jobId != null) active.add(WorkflowStatus.GENERATING_FINAL_REPORT);
         active.add(WorkflowStatus.SUCCESS);
         int currentIndex = status == WorkflowStatus.PENDING ? -1 : active.indexOf(status);
-        return currentIndex >= -1 && currentIndex + 1 < active.size() && active.get(currentIndex + 1) == next;
+        if (status != WorkflowStatus.PENDING && currentIndex < 0) {
+            return false;
+        }
+        for (int index = currentIndex + 1; index < active.size(); index++) {
+            WorkflowStatus candidate = active.get(index);
+            if (candidate == next) {
+                return true;
+            }
+            if (!optionalSteps.contains(candidate)) {
+                return false;
+            }
+        }
+        return false;
     }
 
     public void fail(String message) {

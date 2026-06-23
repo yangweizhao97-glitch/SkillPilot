@@ -47,7 +47,9 @@ public class WorkflowPlanPolicy {
 
     public List<WorkflowStatus> requiredStatuses(AgentTask task) {
         ArrayList<WorkflowStatus> required = new ArrayList<>();
-        required.addAll(task.getEnabledSteps());
+        required.addAll(task.getEnabledSteps().stream()
+                .filter(status -> !task.getOptionalSteps().contains(status))
+                .toList());
         if (task.getJobId() != null) {
             required.add(WorkflowStatus.GENERATING_FINAL_REPORT);
         }
