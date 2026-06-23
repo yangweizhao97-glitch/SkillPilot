@@ -11,14 +11,14 @@ import java.util.List;
 public class RestrictedToolCallingService {
     private final ToolRegistry registry;
     private final ToolExecutor executor;
-    private final AuditDataSanitizer sanitizer;
+    private final ToolModelContextSanitizer modelContextSanitizer;
     private final ObjectMapper objectMapper;
 
     public RestrictedToolCallingService(ToolRegistry registry, ToolExecutor executor,
-                                        AuditDataSanitizer sanitizer, ObjectMapper objectMapper) {
+                                        ToolModelContextSanitizer modelContextSanitizer, ObjectMapper objectMapper) {
         this.registry = registry;
         this.executor = executor;
-        this.sanitizer = sanitizer;
+        this.modelContextSanitizer = modelContextSanitizer;
         this.objectMapper = objectMapper;
     }
 
@@ -52,7 +52,7 @@ public class RestrictedToolCallingService {
                 throw new ToolException(response.error().code(), response.error().message(),
                         response.error().retryable());
             }
-            results.add(new RestrictedToolCallResult(call.toolName(), sanitizer.sanitize(response.output())));
+            results.add(new RestrictedToolCallResult(call.toolName(), modelContextSanitizer.sanitize(response.output())));
         }
         return List.copyOf(results);
     }

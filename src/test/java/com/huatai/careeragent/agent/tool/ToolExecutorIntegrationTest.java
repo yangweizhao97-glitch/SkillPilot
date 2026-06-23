@@ -95,6 +95,8 @@ class ToolExecutorIntegrationTest {
         assertThat(logs).hasSize(3).allMatch(log -> log.getStatus() == ToolCallStatus.TOOL_COMPLETED);
         assertThat(logs).extracting(ToolCallLog::getToolCallId).doesNotHaveDuplicates().doesNotContainNull();
         assertThat(logs).extracting(ToolCallLog::getTraceId).containsOnly(resources.task().getTraceId());
+        assertThat(logs).extracting(ToolCallLog::getScopeType).containsOnly(ToolScopeType.TASK);
+        assertThat(logs).extracting(ToolCallLog::getScopeId).containsOnly(resources.task().getId());
     }
 
     @Test
@@ -122,7 +124,9 @@ class ToolExecutorIntegrationTest {
         assertThat(taskDenied.error().code()).isEqualTo("TOOL_TASK_ACCESS_DENIED");
         assertThat(toolCallLogRepository.findAll())
                 .hasSize(2)
-                .allMatch(log -> log.getStatus() == ToolCallStatus.TOOL_FAILED);
+                .allMatch(log -> log.getStatus() == ToolCallStatus.TOOL_FAILED)
+                .allMatch(log -> log.getScopeType() == ToolScopeType.TASK)
+                .allMatch(log -> log.getScopeId().equals(owner.task().getId()));
     }
 
     @Test

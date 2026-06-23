@@ -3,6 +3,7 @@ package com.huatai.careeragent.tutor;
 import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
 import com.huatai.careeragent.agent.tool.ToolCallLogRepository;
+import com.huatai.careeragent.agent.tool.ToolScopeType;
 import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchItem;
 import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchRequest;
@@ -114,6 +115,8 @@ class TutorServiceIntegrationTest {
                 .satisfies(log -> {
                     assertThat(log.getToolName()).isEqualTo(SearchUserKnowledgeBaseTool.NAME);
                     assertThat(log.getTaskId()).isNull();
+                    assertThat(log.getScopeType()).isEqualTo(ToolScopeType.TUTOR_SESSION);
+                    assertThat(log.getScopeId()).isEqualTo(created.sessionId());
                     assertThat(log.getAgentName()).isEqualTo("TUTOR_AGENT");
                 });
     }

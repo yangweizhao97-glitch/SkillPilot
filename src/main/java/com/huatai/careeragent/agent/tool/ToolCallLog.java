@@ -32,6 +32,13 @@ public class ToolCallLog {
     @Column(name = "task_id")
     private Long taskId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scope_type", length = 32)
+    private ToolScopeType scopeType;
+
+    @Column(name = "scope_id")
+    private Long scopeId;
+
     @Column(name = "trace_id", nullable = false, length = 80)
     private String traceId;
 
@@ -91,6 +98,8 @@ public class ToolCallLog {
         this.userId = context.userId();
         this.toolCallId = UUID.randomUUID().toString();
         this.taskId = context.taskId();
+        this.scopeType = context.scopeType();
+        this.scopeId = context.scopeId();
         this.traceId = context.traceId();
         this.agentName = context.agentName();
         this.toolName = toolName;
@@ -120,6 +129,8 @@ public class ToolCallLog {
     public String getToolCallId() { return toolCallId; }
     public Long getUserId() { return userId; }
     public Long getTaskId() { return taskId; }
+    public ToolScopeType getScopeType() { return scopeType; }
+    public Long getScopeId() { return scopeId; }
     public String getTraceId() { return traceId; }
     public String getAgentName() { return agentName; }
     public String getToolName() { return toolName; }

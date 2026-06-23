@@ -21,11 +21,11 @@ class RestrictedToolCallingServiceTest {
     private final ToolExecutor executor = mock(ToolExecutor.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestrictedToolCallingService service = new RestrictedToolCallingService(
-            registry, executor, new AuditDataSanitizer(objectMapper), objectMapper
+            registry, executor, new ToolModelContextSanitizer(objectMapper), objectMapper
     );
 
     @Test
-    void executesWhitelistedCallsWithTypedInputsAndSanitizedOutputs() {
+    void executesWhitelistedCallsWithTypedInputsAndModelContextOutputs() {
         Tool<TestInput, TestOutput> tool = tool("allowedTool", TestInput.class);
         doReturn(tool).when(registry).getRequired("allowedTool");
         when(executor.execute(any())).thenAnswer(invocation -> {
@@ -34,7 +34,8 @@ class RestrictedToolCallingServiceTest {
             assertThat(request.input()).isInstanceOf(TestInput.class);
             assertThat(((TestInput) request.input()).query()).isEqualTo("Java backend");
             assertThat(request.context().agentName()).isEqualTo("TEST_AGENT");
-            return ToolResponse.success(new TestOutput("answer", "Bearer abc.def"));
+            return ToolResponse.success(new TestOutput("answer", "Bearer abc.def",
+                    "项目中使用 REQUIRES_NEW 隔离审计日志写入。"));
         });
 
         List<RestrictedToolCallResult> results = service.execute(
@@ -46,6 +47,7 @@ class RestrictedToolCallingServiceTest {
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().output()).containsEntry("value", "answer");
         assertThat(results.getFirst().output()).containsEntry("secret", "***");
+        assertThat(results.getFirst().output()).containsEntry("content", "项目中使用 REQUIRES_NEW 隔离审计日志写入。");
         verify(registry).getRequired("allowedTool");
     }
 
@@ -84,5 +86,5 @@ class RestrictedToolCallingServiceTest {
     }
 
     private record TestInput(String query) { }
-    private record TestOutput(String value, String secret) { }
+    private record TestOutput(String value, String secret, String content) { }
 }

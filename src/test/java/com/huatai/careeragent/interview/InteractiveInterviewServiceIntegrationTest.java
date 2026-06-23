@@ -2,10 +2,17 @@ package com.huatai.careeragent.interview;
 
 import com.huatai.careeragent.document.Document;
 import com.huatai.careeragent.document.DocumentRepository;
+import com.huatai.careeragent.agent.tool.AgentNames;
+import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.ToolCallLogRepository;
+import com.huatai.careeragent.agent.tool.ToolScopeType;
 import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.job.Job;
 import com.huatai.careeragent.job.JobRepository;
+import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchItem;
+import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchResponse;
+import com.huatai.careeragent.knowledge.retrieval.KnowledgeSearchService;
 import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.LlmResponse;
@@ -46,11 +53,14 @@ class InteractiveInterviewServiceIntegrationTest {
     @Autowired private ResumeRepository resumeRepository;
     @Autowired private DocumentRepository documentRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private ToolCallLogRepository toolCallLogRepository;
 
     @MockitoBean private LlmClient llmClient;
+    @MockitoBean private KnowledgeSearchService knowledgeSearchService;
 
     @AfterEach
     void cleanUp() {
+        toolCallLogRepository.deleteAll();
         evaluationRepository.deleteAll();
         memoryRepository.deleteAll();
         messageRepository.deleteAll();
@@ -162,6 +172,53 @@ class InteractiveInterviewServiceIntegrationTest {
         assertThat(thirdClarification.currentQuestion()).isEqualTo(1);
         var forcedAdvance = service.answer(user.getId(), invalidSession.sessionId(), "最后补充失败恢复与验证。");
         assertThat(forcedAdvance.currentQuestion()).isEqualTo(2);
+    }
+
+    @Test
+    void plannerSelectedToolEvidenceEntersEvaluationPromptAndLogsInterviewScope() {
+        User user = userRepository.save(new User(
+                "interview-tools-" + UUID.randomUUID() + "@example.com", "hash", "Candidate", UserRole.USER
+        ));
+        Document document = documentRepository.save(new Document(
+                user.getId(), null, FileType.RESUME, "Backend resume", "Java and Spring experience", Map.of()
+        ));
+        Resume resume = resumeRepository.save(new Resume(user.getId(), document.getId(), "Backend"));
+        Job job = jobRepository.save(new Job(user.getId(), null, "Acme", "Backend Engineer", "Build APIs"));
+        questionRepository.save(question(user.getId(), resume.getId(), job.getId(), "How do transactions work?"));
+        when(llmClient.complete(any()))
+                .thenReturn(new LlmResponse(
+                        """
+                        {"toolCalls":[{"toolName":"searchUserKnowledgeBase","arguments":{"query":"事务传播","topK":3}}]}
+                        """,
+                        "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-plan"))
+                .thenReturn(new LlmResponse(
+                        evaluationJson("请补充隔离级别。"),
+                        "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-eval"));
+        when(knowledgeSearchService.search(any(), any())).thenReturn(new KnowledgeSearchResponse(List.of(
+                new KnowledgeSearchItem("chunk_interview_1", document.getId(), FileType.RESUME, "Backend resume",
+                        "page:1", "项目中使用 REQUIRES_NEW 隔离审计日志写入。", 0.95)
+        )));
+
+        var created = service.create(user.getId(), resume.getId(), job.getId());
+        service.answer(user.getId(), created.sessionId(), "事务传播可以隔离审计日志写入。");
+
+        ArgumentCaptor<LlmRequest> requests = ArgumentCaptor.forClass(LlmRequest.class);
+        verify(llmClient, times(2)).complete(requests.capture());
+        List<LlmRequest> evaluationRequests = requests.getAllValues().stream()
+                .filter(request -> request.messages().get(1).content().contains("evaluationGuide"))
+                .toList();
+        assertThat(evaluationRequests).singleElement()
+                .satisfies(request -> assertThat(request.messages().get(1).content())
+                        .contains("toolEvidence", SearchUserKnowledgeBaseTool.NAME, "REQUIRES_NEW")
+                        .doesNotContain("[REDACTED_DOCUMENT"));
+        assertThat(toolCallLogRepository.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getToolName()).isEqualTo(SearchUserKnowledgeBaseTool.NAME);
+                    assertThat(log.getAgentName()).isEqualTo(AgentNames.INTERACTIVE_INTERVIEW_AGENT);
+                    assertThat(log.getTaskId()).isNull();
+                    assertThat(log.getScopeType()).isEqualTo(ToolScopeType.INTERVIEW_SESSION);
+                    assertThat(log.getScopeId()).isEqualTo(created.sessionId());
+                });
     }
 
     private String evaluationJson(String followUpQuestion) {
