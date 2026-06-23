@@ -89,7 +89,7 @@ public class ToolExecutor {
 
     private boolean canLog(ToolRequest<?> request) {
         return request != null && request.context() != null
-                && request.context().userId() != null && request.context().taskId() != null
+                && request.context().userId() != null && request.context().scopeId() != null
                 && request.context().traceId() != null && request.context().agentName() != null;
     }
 

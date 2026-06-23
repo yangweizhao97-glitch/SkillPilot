@@ -22,7 +22,8 @@ public class SearchPublicInterviewKnowledgeTool implements Tool<SearchPublicInte
     @Override public String name() { return NAME; }
     @Override public Class<Input> inputType() { return Input.class; }
     @Override public Set<String> allowedAgents() {
-        return Set.of(AgentNames.INTERVIEW_QUESTION_AGENT, AgentNames.LEARNING_PLAN_AGENT);
+        return Set.of(AgentNames.INTERVIEW_QUESTION_AGENT, AgentNames.LEARNING_PLAN_AGENT,
+                AgentNames.TUTOR_AGENT, AgentNames.INTERACTIVE_INTERVIEW_AGENT);
     }
     @Override public Output execute(Input input, ToolExecutionContext context) {
         return new Output(service.search(new SearchRequest(input.query(), input.industry(), input.position(),

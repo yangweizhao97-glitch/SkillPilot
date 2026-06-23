@@ -127,11 +127,15 @@ class InteractiveInterviewServiceIntegrationTest {
         assertThatThrownBy(() -> memoryService.get(intruder.getId(), resume.getId(), job.getId()))
                 .isInstanceOf(BusinessException.class);
         ArgumentCaptor<LlmRequest> requests = ArgumentCaptor.forClass(LlmRequest.class);
-        verify(llmClient, times(4)).complete(requests.capture());
-        assertThat(requests.getAllValues().get(1).messages().get(1).content())
+        verify(llmClient, times(8)).complete(requests.capture());
+        List<LlmRequest> evaluationRequests = requests.getAllValues().stream()
+                .filter(request -> request.messages().get(1).content().contains("evaluationGuide"))
+                .toList();
+        assertThat(evaluationRequests).hasSize(4);
+        assertThat(evaluationRequests.get(1).messages().get(1).content())
                 .contains("interviewMemory", "answerCount", "1")
                 .doesNotContain("事务保证一致性");
-        assertThat(requests.getAllValues().get(3).messages().get(1).content())
+        assertThat(evaluationRequests.get(3).messages().get(1).content())
                 .contains("interviewMemory", "answerCount", "2")
                 .doesNotContain("支持 REQUIRED 和 REQUIRES_NEW");
 
@@ -146,7 +150,7 @@ class InteractiveInterviewServiceIntegrationTest {
                 .containsEntry("nextAction", "CLARIFY");
         assertThat(clarification.messages().getLast().content()).contains("请先具体说明");
         assertThat(memoryService.get(user.getId(), resume.getId(), job.getId()).available()).isFalse();
-        verify(llmClient, times(4)).complete(any());
+        verify(llmClient, times(8)).complete(any());
 
         doReturn(new LlmResponse(
                 adaptiveEvaluationJson(), "TEST", "mock", "stop",

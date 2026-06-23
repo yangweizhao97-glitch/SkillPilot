@@ -24,6 +24,12 @@ public class RestrictedToolCallingService {
 
     public List<RestrictedToolCallResult> execute(List<PlannedToolCall> calls, ToolCallingPolicy policy,
                                                   AgentContext context) {
+        return execute(calls, policy,
+                new ToolExecutionContext(context.userId(), context.taskId(), context.traceId(), policy.agentName()));
+    }
+
+    public List<RestrictedToolCallResult> execute(List<PlannedToolCall> calls, ToolCallingPolicy policy,
+                                                  ToolExecutionContext context) {
         List<PlannedToolCall> planned = calls == null ? List.of() : List.copyOf(calls);
         if (planned.size() > policy.maxCalls()) {
             throw new ToolException("TOOL_CALL_LIMIT_EXCEEDED",
@@ -40,7 +46,7 @@ public class RestrictedToolCallingService {
             ToolResponse<?> response = executor.execute(new ToolRequest<>(
                     call.toolName(),
                     typedInput,
-                    new ToolExecutionContext(context.userId(), context.taskId(), context.traceId(), policy.agentName())
+                    context
             ));
             if (!response.success()) {
                 throw new ToolException(response.error().code(), response.error().message(),

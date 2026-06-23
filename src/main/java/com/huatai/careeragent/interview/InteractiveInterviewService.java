@@ -4,9 +4,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huatai.careeragent.agent.tool.AgentNames;
+import com.huatai.careeragent.agent.tool.PlannedToolCall;
+import com.huatai.careeragent.agent.tool.RestrictedToolCallResult;
+import com.huatai.careeragent.agent.tool.RestrictedToolCallingService;
+import com.huatai.careeragent.agent.tool.SearchPublicInterviewKnowledgeTool;
+import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.ToolCallingPolicy;
+import com.huatai.careeragent.agent.tool.ToolExecutionContext;
 import com.huatai.careeragent.agent.schema.SchemaRepairService;
 import com.huatai.careeragent.common.error.BusinessException;
+import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.job.JobRepository;
+import com.huatai.careeragent.knowledge.retrieval.RetrievalMode;
 import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.PromptCatalog;
@@ -22,8 +32,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -32,6 +44,10 @@ public class InteractiveInterviewService {
     private static final Logger log = LoggerFactory.getLogger(InteractiveInterviewService.class);
     private static final String CLOSING_MESSAGE = "本轮面试已结束。你的回答已经保存，可以返回会话列表查看记录。";
     private static final int MAX_ADAPTIVE_FOLLOW_UPS = 3;
+    private static final int MAX_MODEL_PLANNED_TOOL_CALLS = 1;
+    private static final List<FileType> PRIVATE_SOURCES = List.of(
+            FileType.RESUME, FileType.JD, FileType.NOTE, FileType.PROJECT_DOC
+    );
     private static final Map<String, Integer> SCORE_WEIGHTS = Map.of(
             "accuracy", 35, "relevance", 25, "depth", 25, "communication", 15
     );
@@ -46,6 +62,7 @@ public class InteractiveInterviewService {
     private final SchemaRepairService schemaRepairService;
     private final ObjectMapper objectMapper;
     private final InterviewMemoryService memoryService;
+    private final RestrictedToolCallingService toolCalling;
     private final TransactionTemplate transactions;
 
     public InteractiveInterviewService(InterviewSessionRepository sessionRepository,
@@ -55,6 +72,7 @@ public class InteractiveInterviewService {
                                        ResumeRepository resumeRepository, JobRepository jobRepository,
                                        LlmClient llmClient, SchemaRepairService schemaRepairService,
                                        ObjectMapper objectMapper, InterviewMemoryService memoryService,
+                                       RestrictedToolCallingService toolCalling,
                                        PlatformTransactionManager transactionManager) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
@@ -66,6 +84,7 @@ public class InteractiveInterviewService {
         this.schemaRepairService = schemaRepairService;
         this.objectMapper = objectMapper;
         this.memoryService = memoryService;
+        this.toolCalling = toolCalling;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -146,15 +165,16 @@ public class InteractiveInterviewService {
     private AnswerEvaluationDecision evaluateAnswer(TurnWork work) {
         if (isNonAnswer(work.answer())) return nonAnswerDecision(work);
         try {
+            String traceId = "interview_" + work.sessionId() + "_" + UUID.randomUUID().toString().replace("-", "");
             String context = objectMapper.writeValueAsString(Map.of(
                     "question", work.questionText(),
                     "expectedPoints", work.expectedPoints(),
                     "evaluationGuide", work.evaluationGuide(),
                     "candidateAnswer", work.answer(),
                     "interviewMemory", memoryService.get(
-                            work.userId(), work.resumeId(), work.jobId()).promptContext()
+                            work.userId(), work.resumeId(), work.jobId()).promptContext(),
+                    "toolEvidence", toolEvidence(work, traceId)
             ));
-            String traceId = "interview_" + work.sessionId() + "_" + UUID.randomUUID().toString().replace("-", "");
             var response = llmClient.complete(LlmRequest.secured(
                     PromptCatalog.ANSWER_EVALUATION.systemPrompt(),
                     PromptCatalog.ANSWER_EVALUATION.instruction(),
@@ -186,6 +206,115 @@ public class InteractiveInterviewService {
                     work.sessionId(), exception.getMessage());
             return new AnswerEvaluationDecision(false, "", Map.of(), null,
                     InterviewAnswerDisposition.COMPLETE, InterviewNextAction.NEXT, false);
+        }
+    }
+
+    private List<RestrictedToolCallResult> toolEvidence(TurnWork work, String traceId) {
+        try {
+            List<PlannedToolCall> plannedCalls = planInterviewTools(work, traceId);
+            return toolCalling.execute(plannedCalls,
+                    new ToolCallingPolicy(AgentNames.INTERACTIVE_INTERVIEW_AGENT,
+                            Set.of(SearchUserKnowledgeBaseTool.NAME, SearchPublicInterviewKnowledgeTool.NAME),
+                            MAX_MODEL_PLANNED_TOOL_CALLS),
+                    ToolExecutionContext.interviewSession(work.userId(), work.sessionId(), traceId,
+                            AgentNames.INTERACTIVE_INTERVIEW_AGENT));
+        } catch (RuntimeException exception) {
+            log.warn("Interview restricted tool calling skipped: sessionId={}, reason={}",
+                    work.sessionId(), exception.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<PlannedToolCall> planInterviewTools(TurnWork work, String traceId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("availableTools", List.of(
+                Map.of("toolName", SearchPublicInterviewKnowledgeTool.NAME, "maxCalls", MAX_MODEL_PLANNED_TOOL_CALLS,
+                        "purpose", "Find public interview knowledge relevant to the current question."),
+                Map.of("toolName", SearchUserKnowledgeBaseTool.NAME, "maxCalls", MAX_MODEL_PLANNED_TOOL_CALLS,
+                        "purpose", "Find private resume, JD, note, or project context relevant to the answer.")
+        ));
+        payload.put("question", work.questionText());
+        payload.put("expectedPoints", work.expectedPoints());
+        payload.put("candidateAnswer", work.answer());
+        payload.put("defaultPrivateSearch", privateSearchArguments(work, Map.of()));
+        payload.put("defaultPublicSearch", publicSearchArguments(work, Map.of()));
+        var response = llmClient.complete(LlmRequest.secured(
+                "You are a strict tool planner for an interactive interview evaluator.",
+                """
+                        Return strict JSON with this shape:
+                        {"toolCalls":[{"toolName":"searchPublicInterviewKnowledge","arguments":{"query":"...","topK":4}}]}
+                        Use only availableTools. Do not exceed maxCalls. Use an empty toolCalls array when no search is useful.
+                        """,
+                List.of(writeJson(payload)), traceId, true
+        ));
+        return parsePlannedToolCalls(response == null ? null : response.content(), work);
+    }
+
+    private List<PlannedToolCall> parsePlannedToolCalls(String content, TurnWork work) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("Interview tool planner returned empty content");
+        }
+        try {
+            JsonNode toolCalls = objectMapper.readTree(content).path("toolCalls");
+            if (!toolCalls.isArray()) {
+                return List.of();
+            }
+            List<PlannedToolCall> calls = new java.util.ArrayList<>();
+            for (JsonNode node : toolCalls) {
+                String toolName = node.path("toolName").asText("");
+                Map<String, Object> arguments = objectMapper.convertValue(
+                        node.path("arguments"), new TypeReference<Map<String, Object>>() { });
+                if (SearchUserKnowledgeBaseTool.NAME.equals(toolName)) {
+                    arguments = privateSearchArguments(work, arguments);
+                } else if (SearchPublicInterviewKnowledgeTool.NAME.equals(toolName)) {
+                    arguments = publicSearchArguments(work, arguments);
+                }
+                calls.add(new PlannedToolCall(toolName, arguments));
+            }
+            return List.copyOf(calls);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Could not parse interview planned tool calls", exception);
+        }
+    }
+
+    private Map<String, Object> privateSearchArguments(TurnWork work, Map<String, Object> planned) {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("query", plannedString(planned, "query", work.questionText() + " " + work.answer()));
+        arguments.put("sourceTypes", PRIVATE_SOURCES);
+        arguments.put("topK", planned.getOrDefault("topK", 4));
+        arguments.put("retrievalMode", RetrievalMode.HYBRID);
+        return Map.copyOf(arguments);
+    }
+
+    private Map<String, Object> publicSearchArguments(TurnWork work, Map<String, Object> planned) {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("query", plannedString(planned, "query", work.questionText()));
+        var job = jobRepository.findByIdAndUserId(work.jobId(), work.userId()).orElse(null);
+        if (job != null) {
+            arguments.put("position", plannedString(planned, "position", job.getPosition()));
+            arguments.put("company", plannedString(planned, "company", job.getCompany()));
+        }
+        for (String key : List.of("industry", "experienceLevel", "interviewRound")) {
+            Object value = planned.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                arguments.put(key, text);
+            }
+        }
+        arguments.put("topK", planned.getOrDefault("topK", 4));
+        arguments.entrySet().removeIf(entry -> entry.getValue() == null);
+        return Map.copyOf(arguments);
+    }
+
+    private String plannedString(Map<String, Object> planned, String key, String fallback) {
+        Object value = planned.get(key);
+        return value instanceof String text && !text.isBlank() ? text : fallback;
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize interview tool planning context", exception);
         }
     }
 

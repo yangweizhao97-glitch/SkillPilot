@@ -1,7 +1,17 @@
 package com.huatai.careeragent.tutor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huatai.careeragent.agent.tool.AgentNames;
+import com.huatai.careeragent.agent.tool.PlannedToolCall;
+import com.huatai.careeragent.agent.tool.RestrictedToolCallResult;
+import com.huatai.careeragent.agent.tool.RestrictedToolCallingService;
+import com.huatai.careeragent.agent.tool.SearchPublicInterviewKnowledgeTool;
+import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.ToolCallingPolicy;
+import com.huatai.careeragent.agent.tool.ToolExecutionContext;
 import com.huatai.careeragent.common.error.BusinessException;
 import com.huatai.careeragent.document.DocumentRepository;
 import com.huatai.careeragent.file.FileType;
@@ -21,6 +31,8 @@ import com.huatai.careeragent.llm.LlmClient;
 import com.huatai.careeragent.llm.LlmRequest;
 import com.huatai.careeragent.llm.PromptCatalog;
 import com.huatai.careeragent.resume.ResumeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -34,14 +46,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 @Service
 public class TutorService {
+    private static final Logger log = LoggerFactory.getLogger(TutorService.class);
     private static final List<FileType> PRIVATE_SOURCES = List.of(
             FileType.RESUME, FileType.JD, FileType.NOTE, FileType.PROJECT_DOC
     );
+    private static final int MAX_MODEL_PLANNED_TOOL_CALLS = 2;
     private static final int RECENT_CONTEXT_MESSAGES = 12;
     private static final int MAX_MEMORY_CHARS = 6000;
     private static final int MAX_MESSAGE_MEMORY_CHARS = 500;
@@ -61,6 +76,7 @@ public class TutorService {
     private final PublicKnowledgeSearchService publicKnowledgeSearchService;
     private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
+    private final RestrictedToolCallingService toolCalling;
     private final TransactionTemplate transactions;
 
     public TutorService(TutorSessionRepository sessionRepository, TutorMessageRepository messageRepository,
@@ -71,7 +87,8 @@ public class TutorService {
                         LearningPlanRepository learningPlanRepository,
                         KnowledgeSearchService knowledgeSearchService,
                         PublicKnowledgeSearchService publicKnowledgeSearchService, LlmClient llmClient,
-                        ObjectMapper objectMapper, PlatformTransactionManager transactionManager) {
+                        ObjectMapper objectMapper, RestrictedToolCallingService toolCalling,
+                        PlatformTransactionManager transactionManager) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.resumeRepository = resumeRepository;
@@ -84,6 +101,7 @@ public class TutorService {
         this.publicKnowledgeSearchService = publicKnowledgeSearchService;
         this.llmClient = llmClient;
         this.objectMapper = objectMapper;
+        this.toolCalling = toolCalling;
         this.transactions = new TransactionTemplate(transactionManager);
     }
 
@@ -118,9 +136,9 @@ public class TutorService {
                                                  Consumer<String> onDelta) {
         TutorWork work = begin(userId, sessionId, content);
         try {
-            SourceContext sources = sources(work.session(), work.retrievalQuery());
-            String promptContext = promptContext(work, sources, content);
             String traceId = "tutor_" + sessionId + "_" + UUID.randomUUID().toString().replace("-", "");
+            SourceContext sources = toolCallingSources(work, content, traceId);
+            String promptContext = promptContext(work, sources, content);
             StringBuilder streamed = new StringBuilder();
             var llmResponse = llmClient.stream(LlmRequest.secured(
                     PromptCatalog.TUTOR.systemPrompt(), PromptCatalog.TUTOR.instruction(),
@@ -136,6 +154,165 @@ public class TutorService {
         } catch (RuntimeException exception) {
             abort(work);
             throw exception;
+        }
+    }
+
+    private SourceContext toolCallingSources(TutorWork work, String content, String traceId) {
+        try {
+            List<PlannedToolCall> plannedCalls = planTutorTools(work, content, traceId);
+            List<RestrictedToolCallResult> results = toolCalling.execute(plannedCalls,
+                    new ToolCallingPolicy(AgentNames.TUTOR_AGENT,
+                            Set.of(SearchUserKnowledgeBaseTool.NAME, SearchPublicInterviewKnowledgeTool.NAME),
+                            MAX_MODEL_PLANNED_TOOL_CALLS),
+                    ToolExecutionContext.tutorSession(work.session().getUserId(), work.session().getId(), traceId,
+                            AgentNames.TUTOR_AGENT));
+            return sourceContextFromToolResults(results);
+        } catch (RuntimeException exception) {
+            log.warn("Tutor restricted tool calling fell back to preset path: sessionId={}, reason={}",
+                    work.session().getId(), exception.getMessage());
+            return sources(work.session(), work.retrievalQuery());
+        }
+    }
+
+    private List<PlannedToolCall> planTutorTools(TutorWork work, String content, String traceId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("availableTools", List.of(
+                Map.of("toolName", SearchUserKnowledgeBaseTool.NAME, "maxCalls", MAX_MODEL_PLANNED_TOOL_CALLS,
+                        "purpose", "Search the user's private resume, JD, notes, and project documents."),
+                Map.of("toolName", SearchPublicInterviewKnowledgeTool.NAME, "maxCalls", MAX_MODEL_PLANNED_TOOL_CALLS,
+                        "purpose", "Search public interview knowledge and common interview answers.")
+        ));
+        payload.put("defaultPrivateSearch", privateSearchArguments(work.retrievalQuery(), Map.of()));
+        payload.put("defaultPublicSearch", publicSearchArguments(work.session(), work.retrievalQuery(), Map.of()));
+        payload.put("sessionMemory", work.memory());
+        payload.put("recentConversation", work.history().stream().map(message -> Map.of(
+                "role", message.getRole().name(), "content", message.getContent()
+        )).toList());
+        payload.put("currentMessage", content);
+        var response = llmClient.complete(LlmRequest.secured(
+                "You are a strict tool planner for a tutor agent.",
+                """
+                        Return strict JSON with this shape:
+                        {"toolCalls":[{"toolName":"searchUserKnowledgeBase","arguments":{"query":"...","topK":5}}]}
+                        Use only availableTools. Do not exceed maxCalls. Use an empty toolCalls array when no search is useful.
+                        """,
+                List.of(objectMapperWrite(payload)), traceId, true
+        ));
+        return parsePlannedToolCalls(response == null ? null : response.content(), work);
+    }
+
+    private List<PlannedToolCall> parsePlannedToolCalls(String content, TutorWork work) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("Tutor tool planner returned empty content");
+        }
+        try {
+            JsonNode toolCalls = objectMapper.readTree(content).path("toolCalls");
+            if (!toolCalls.isArray()) {
+                return List.of();
+            }
+            List<PlannedToolCall> calls = new ArrayList<>();
+            for (JsonNode node : toolCalls) {
+                String toolName = node.path("toolName").asText("");
+                Map<String, Object> arguments = objectMapper.convertValue(
+                        node.path("arguments"), new TypeReference<Map<String, Object>>() { });
+                if (SearchUserKnowledgeBaseTool.NAME.equals(toolName)) {
+                    arguments = privateSearchArguments(work.retrievalQuery(), arguments);
+                } else if (SearchPublicInterviewKnowledgeTool.NAME.equals(toolName)) {
+                    arguments = publicSearchArguments(work.session(), work.retrievalQuery(), arguments);
+                }
+                calls.add(new PlannedToolCall(toolName, arguments));
+            }
+            return List.copyOf(calls);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Could not parse tutor planned tool calls", exception);
+        }
+    }
+
+    private Map<String, Object> privateSearchArguments(String query, Map<String, Object> planned) {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("query", plannedString(planned, "query", query));
+        arguments.put("sourceTypes", PRIVATE_SOURCES);
+        arguments.put("topK", planned.getOrDefault("topK", 5));
+        arguments.put("retrievalMode", RetrievalMode.HYBRID);
+        return Map.copyOf(arguments);
+    }
+
+    private Map<String, Object> publicSearchArguments(TutorSession session, String query, Map<String, Object> planned) {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("query", plannedString(planned, "query", query));
+        if (session.getJobId() != null) {
+            var job = jobRepository.findByIdAndUserId(session.getJobId(), session.getUserId()).orElse(null);
+            if (job != null) {
+                arguments.put("position", plannedString(planned, "position", job.getPosition()));
+                arguments.put("company", plannedString(planned, "company", job.getCompany()));
+            }
+        }
+        for (String key : List.of("industry", "experienceLevel", "interviewRound")) {
+            Object value = planned.get(key);
+            if (value instanceof String text && !text.isBlank()) {
+                arguments.put(key, text);
+            }
+        }
+        arguments.put("topK", planned.getOrDefault("topK", 4));
+        arguments.entrySet().removeIf(entry -> entry.getValue() == null);
+        return Map.copyOf(arguments);
+    }
+
+    private String plannedString(Map<String, Object> planned, String key, String fallback) {
+        Object value = planned.get(key);
+        return value instanceof String text && !text.isBlank() ? text : fallback;
+    }
+
+    private SourceContext sourceContextFromToolResults(List<RestrictedToolCallResult> results) {
+        List<Map<String, Object>> context = new ArrayList<>();
+        List<Map<String, Object>> citations = new ArrayList<>();
+        for (RestrictedToolCallResult result : results) {
+            Map<String, Object> source = new LinkedHashMap<>();
+            source.put("sourceType", "TOOL_RESULT");
+            source.put("toolName", result.toolName());
+            source.put("output", result.output());
+            context.add(Map.copyOf(source));
+            extractToolCitations(result, citations);
+        }
+        return new SourceContext(List.copyOf(context), List.copyOf(citations));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void extractToolCitations(RestrictedToolCallResult result, List<Map<String, Object>> citations) {
+        Object items = result.output().get("items");
+        if (!(items instanceof List<?> values)) {
+            return;
+        }
+        for (Object item : values) {
+            if (!(item instanceof Map<?, ?> raw)) {
+                continue;
+            }
+            Map<String, Object> value = (Map<String, Object>) raw;
+            String citationId = stringValue(value.get("citationId"));
+            if (citationId == null || citationId.isBlank()) {
+                continue;
+            }
+            if (SearchUserKnowledgeBaseTool.NAME.equals(result.toolName())) {
+                citations.add(citation(citationId, "PRIVATE_" + stringValue(value.get("sourceType")),
+                        stringValue(value.get("sourceTitle")), stringValue(value.get("sourceLocator")),
+                        stringValue(value.get("content"))));
+            } else if (SearchPublicInterviewKnowledgeTool.NAME.equals(result.toolName())) {
+                citations.add(citation(citationId, "PUBLIC_INTERVIEW_KNOWLEDGE",
+                        stringValue(value.get("sourceTitle")), stringValue(value.get("sourceUrl")),
+                        stringValue(value.get("question"))));
+            }
+        }
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String objectMapperWrite(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize tutor tool planning context", exception);
         }
     }
 
@@ -295,9 +472,9 @@ public class TutorService {
 
     private Map<String, Object> citation(String id, String type, String title, String locator, String snippet) {
         Map<String, Object> value = new LinkedHashMap<>();
-        value.put("citationId", id); value.put("sourceType", type); value.put("title", title);
+        value.put("citationId", id); value.put("sourceType", type); value.put("title", title == null ? "" : title);
         if (locator != null && !locator.isBlank()) value.put("sourceLocator", locator);
-        value.put("snippet", snippet);
+        value.put("snippet", snippet == null ? "" : snippet);
         return Map.copyOf(value);
     }
 

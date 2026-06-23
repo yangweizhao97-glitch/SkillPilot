@@ -70,6 +70,7 @@ class InterviewReviewServiceIntegrationTest {
                 "How do transactions work?", QuestionType.TECHNICAL, QuestionDifficulty.MEDIUM,
                 List.of("Propagation", "Isolation"), List.of(), "General question"));
         when(llmClient.complete(any()))
+                .thenReturn(response(emptyToolPlanJson()))
                 .thenReturn(response(evaluationJson()))
                 .thenReturn(response(reviewJson()));
 
@@ -89,7 +90,7 @@ class InterviewReviewServiceIntegrationTest {
         List<Map<String, Object>> dimensions = (List<Map<String, Object>>) first.result().get("dimensions");
         assertThat(dimensions).extracting(item -> ((Number) item.get("score")).intValue())
                 .containsExactly(70, 76, 65, 80);
-        verify(llmClient, times(2)).complete(any());
+        verify(llmClient, times(3)).complete(any());
 
         User intruder = user("intruder");
         assertThatThrownBy(() -> reviewService.get(intruder.getId(), session.sessionId()))
@@ -108,6 +109,7 @@ class InterviewReviewServiceIntegrationTest {
                 "How do transactions work?", QuestionType.TECHNICAL, QuestionDifficulty.MEDIUM,
                 List.of("Propagation", "Isolation"), List.of(), "General question"));
         when(llmClient.complete(any()))
+                .thenReturn(response(emptyToolPlanJson()))
                 .thenReturn(response(evaluationJson()))
                 .thenThrow(new IllegalStateException("model unavailable"));
 
@@ -129,6 +131,12 @@ class InterviewReviewServiceIntegrationTest {
 
     private LlmResponse response(String content) {
         return new LlmResponse(content, "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request");
+    }
+
+    private String emptyToolPlanJson() {
+        return """
+                {"toolCalls":[]}
+                """;
     }
 
     private String evaluationJson() {

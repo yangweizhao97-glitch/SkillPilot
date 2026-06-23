@@ -35,7 +35,9 @@ public class SearchUserKnowledgeBaseTool implements Tool<SearchUserKnowledgeBase
 
     @Override
     public Set<String> allowedAgents() {
-        return Set.of(AgentNames.JOB_MATCH_AGENT, AgentNames.RESUME_ANALYSIS_AGENT, AgentNames.INTERVIEW_QUESTION_AGENT);
+        return Set.of(AgentNames.JOB_MATCH_AGENT, AgentNames.RESUME_ANALYSIS_AGENT,
+                AgentNames.INTERVIEW_QUESTION_AGENT, AgentNames.TUTOR_AGENT,
+                AgentNames.INTERACTIVE_INTERVIEW_AGENT);
     }
 
     @Override

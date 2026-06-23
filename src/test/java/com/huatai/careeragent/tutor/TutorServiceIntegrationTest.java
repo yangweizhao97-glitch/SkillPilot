@@ -1,6 +1,8 @@
 package com.huatai.careeragent.tutor;
 
 import com.huatai.careeragent.common.error.BusinessException;
+import com.huatai.careeragent.agent.tool.SearchUserKnowledgeBaseTool;
+import com.huatai.careeragent.agent.tool.ToolCallLogRepository;
 import com.huatai.careeragent.file.FileType;
 import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchItem;
 import com.huatai.careeragent.knowledge.retrieval.KnowledgeDtos.KnowledgeSearchRequest;
@@ -34,12 +36,14 @@ class TutorServiceIntegrationTest {
     @Autowired private TutorService service;
     @Autowired private TutorMessageRepository messageRepository;
     @Autowired private TutorSessionRepository sessionRepository;
+    @Autowired private ToolCallLogRepository toolCallLogRepository;
     @Autowired private UserRepository userRepository;
     @MockitoBean private LlmClient llmClient;
     @MockitoBean private KnowledgeSearchService knowledgeSearchService;
 
     @AfterEach
     void cleanUp() {
+        toolCallLogRepository.deleteAll();
         messageRepository.deleteAll();
         sessionRepository.deleteAll();
         userRepository.deleteAll();
@@ -73,6 +77,45 @@ class TutorServiceIntegrationTest {
                 .contains("\"conversationState\":\"FIRST_TURN\"")
                 .contains("\"retrievedSources\":[]")
                 .doesNotContain("Java 相关");
+    }
+
+    @Test
+    void executesPlannerSelectedToolWithTutorSessionScope() {
+        User user = userRepository.save(new User(
+                "tutor-tool-" + UUID.randomUUID() + "@example.com", "hash", "Candidate", UserRole.USER
+        ));
+        var created = service.create(user.getId(), new TutorService.CreateTutorSessionRequest(
+                "工具答疑", null, null, null, null, null
+        ));
+        when(llmClient.complete(any())).thenReturn(new LlmResponse(
+                """
+                {"toolCalls":[{"toolName":"searchUserKnowledgeBase","arguments":{"query":"事务传播","topK":3}}]}
+                """,
+                "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-plan"));
+        when(knowledgeSearchService.search(any(), any())).thenReturn(new KnowledgeSearchResponse(List.of(
+                new KnowledgeSearchItem("chunk_tool_1", 3L, FileType.RESUME, "后端简历", "page:1",
+                        "项目中使用 REQUIRES_NEW 隔离审计日志写入。", 0.93)
+        )));
+        when(llmClient.stream(any(), any())).thenAnswer(invocation -> {
+            Consumer<String> consumer = invocation.getArgument(1);
+            consumer.accept("可以结合审计日志独立事务说明 [chunk_tool_1]");
+            return new LlmResponse("可以结合审计日志独立事务说明 [chunk_tool_1]",
+                    "TEST", "mock", "stop", LlmResponse.TokenUsage.empty(), 1, "request-answer");
+        });
+
+        var answered = service.messageStreaming(user.getId(), created.sessionId(), "结合我的项目解释事务传播",
+                ignored -> { });
+
+        assertThat(answered.messages().getLast().citations()).singleElement()
+                .satisfies(citation -> assertThat(citation)
+                        .containsEntry("citationId", "chunk_tool_1")
+                        .containsEntry("sourceType", "PRIVATE_RESUME"));
+        assertThat(toolCallLogRepository.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getToolName()).isEqualTo(SearchUserKnowledgeBaseTool.NAME);
+                    assertThat(log.getTaskId()).isNull();
+                    assertThat(log.getAgentName()).isEqualTo("TUTOR_AGENT");
+                });
     }
 
     @Test
