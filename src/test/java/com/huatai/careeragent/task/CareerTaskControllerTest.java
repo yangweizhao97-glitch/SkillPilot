@@ -2,6 +2,8 @@ package com.huatai.careeragent.task;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.huatai.careeragent.agent.tool.AgentNames;
+import com.huatai.careeragent.agent.workflow.WorkflowStepResult;
 import com.huatai.careeragent.document.Document;
 import com.huatai.careeragent.document.DocumentRepository;
 import com.huatai.careeragent.file.FileType;
@@ -15,6 +17,7 @@ import com.huatai.careeragent.task.log.ExecutionLogStatus;
 import com.huatai.careeragent.user.User;
 import com.huatai.careeragent.user.UserRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -25,7 +28,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -70,6 +75,13 @@ class CareerTaskControllerTest {
 
     @MockitoBean
     private CareerWorkflowStepHandler stepHandler;
+
+    @BeforeEach
+    void setUpWorkflowStepHandler() {
+        doAnswer(invocation -> workflowResult(invocation.getArgument(1)))
+                .when(stepHandler).execute(org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.any(WorkflowStatus.class));
+    }
 
     @AfterEach
     void cleanUp() {
@@ -129,14 +141,16 @@ class CareerTaskControllerTest {
                 .andExpect(jsonPath("$.data.steps[6].step").value("FINAL_REPORT"))
                 .andExpect(jsonPath("$.data.steps[6].summary").value("报告已生成"))
                 .andExpect(jsonPath("$.data.steps[?(@.status == 'RUNNING')]").value(hasSize(0)))
-                .andExpect(jsonPath("$.data.items.length()").value(13))
+                .andExpect(jsonPath("$.data.items.length()").value(24))
                 .andExpect(jsonPath("$.data.items[?(@.status == 'HANDOFF_COMPLETED')]").value(hasSize(3)))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'VERIFICATION_PASSED')]").value(hasSize(4)))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'ROUTE_DECIDED')]").value(hasSize(4)))
                 .andExpect(jsonPath("$.data.items[0].workflowStatus").value("PENDING"))
                 .andExpect(jsonPath("$.data.items[0].progress").value(0))
-                .andExpect(jsonPath("$.data.items[12].workflowStatus").value("SUCCESS"))
-                .andExpect(jsonPath("$.data.items[12].progress").value(100))
-                .andExpect(jsonPath("$.data.items[12].traceId").value(completed.getTraceId()))
-                .andExpect(jsonPath("$.data.items[12].updatedAt").isNotEmpty());
+                .andExpect(jsonPath("$.data.items[23].workflowStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.items[23].progress").value(100))
+                .andExpect(jsonPath("$.data.items[23].traceId").value(completed.getTraceId()))
+                .andExpect(jsonPath("$.data.items[23].updatedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/career-tasks/{taskId}", taskId)
                         .header("Authorization", "Bearer " + otherToken))
@@ -228,6 +242,47 @@ class CareerTaskControllerTest {
     }
 
     @Test
+    void retriesStepOnceWhenVerifierRejectsArtifact() throws Exception {
+        AuthenticatedResources owner = createAuthenticatedResources();
+        AtomicInteger questionAttempts = new AtomicInteger();
+        doAnswer(invocation -> {
+            WorkflowStatus status = invocation.getArgument(1);
+            if (status == WorkflowStatus.GENERATING_QUESTIONS && questionAttempts.getAndIncrement() == 0) {
+                return lowQualityQuestionResult();
+            }
+            return workflowResult(status);
+        }).when(stepHandler).execute(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(WorkflowStatus.class));
+
+        String response = mockMvc.perform(post("/api/career-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resumeId": %d,
+                                  "jobId": %d,
+                                  "enabledSteps": ["GENERATING_QUESTIONS"]
+                                }
+                                """.formatted(owner.resumeId(), owner.jobId()))
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Long taskId = objectMapper.readTree(response).path("data").path("taskId").asLong();
+
+        AgentTask completed = awaitStatus(taskId, WorkflowStatus.SUCCESS);
+
+        assertThat(questionAttempts).hasValue(2);
+        var logs = executionLogRepository.findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(
+                taskId, completed.getUserId()
+        );
+        assertThat(logs).extracting(AgentExecutionLog::getStatus)
+                .contains(ExecutionLogStatus.VERIFICATION_FAILED,
+                        ExecutionLogStatus.STEP_RETRYING,
+                        ExecutionLogStatus.VERIFICATION_PASSED);
+    }
+
+    @Test
     void rejectsResourcesOwnedByAnotherUserAndInvalidSteps() throws Exception {
         AuthenticatedResources owner = createAuthenticatedResources();
         String otherToken = registerAndLogin().token();
@@ -264,7 +319,7 @@ class CareerTaskControllerTest {
         String otherToken = registerAndLogin().token();
         doAnswer(invocation -> {
             Thread.sleep(80);
-            return null;
+            return workflowResult(invocation.getArgument(1));
         }).when(stepHandler).execute(org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.any(WorkflowStatus.class));
 
@@ -326,6 +381,31 @@ class CareerTaskControllerTest {
                 .andReturn().getResponse().getContentAsString();
         JsonNode root = objectMapper.readTree(response);
         return new AuthenticatedUser(email, root.path("data").path("accessToken").asText());
+    }
+
+    private WorkflowStepResult workflowResult(WorkflowStatus status) {
+        return switch (status) {
+            case MATCHING_JOB -> new WorkflowStepResult(status, AgentNames.JOB_MATCH_AGENT,
+                    "JOB_MATCH_REPORT", 1L, Map.of("matchScore", 82, "summaryPresent", true));
+            case ANALYZING_RESUME -> new WorkflowStepResult(status, AgentNames.RESUME_ANALYSIS_AGENT,
+                    "RESUME_ANALYSIS_REPORT", 2L,
+                    Map.of("summaryPresent", true, "suggestionCount", 1, "nextActionCount", 1));
+            case GENERATING_QUESTIONS -> new WorkflowStepResult(status, AgentNames.INTERVIEW_QUESTION_AGENT,
+                    "INTERVIEW_QUESTIONS", 3L,
+                    Map.of("questionCount", 5, "questionTypeCount", 2, "difficultyCount", 2,
+                            "expectedPointsCoverage", 1.0, "evidenceCoverage", 1.0));
+            case GENERATING_FINAL_REPORT -> new WorkflowStepResult(status, AgentNames.FINAL_REPORT_AGENT,
+                    "FINAL_REPORT", 4L,
+                    Map.of("reportStatus", "COMPLETE", "complete", true));
+            default -> new WorkflowStepResult(status, "CAREER_WORKFLOW", "TASK", 5L, Map.of());
+        };
+    }
+
+    private WorkflowStepResult lowQualityQuestionResult() {
+        return new WorkflowStepResult(WorkflowStatus.GENERATING_QUESTIONS, AgentNames.INTERVIEW_QUESTION_AGENT,
+                "INTERVIEW_QUESTIONS", 30L,
+                Map.of("questionCount", 2, "questionTypeCount", 1, "difficultyCount", 1,
+                        "expectedPointsCoverage", 1.0, "evidenceCoverage", 1.0));
     }
 
     private AgentTask awaitStatus(Long taskId, WorkflowStatus expected) throws InterruptedException {

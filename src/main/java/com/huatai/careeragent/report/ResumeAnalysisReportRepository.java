@@ -11,6 +11,7 @@ public interface ResumeAnalysisReportRepository extends JpaRepository<ResumeAnal
     List<ResumeAnalysisReport> findByUserIdAndResumeIdOrderByVersionDesc(Long userId, Long resumeId);
     Optional<ResumeAnalysisReport> findFirstByUserIdAndResumeIdOrderByVersionDesc(Long userId, Long resumeId);
     Optional<ResumeAnalysisReport> findByUserIdAndTaskId(Long userId, Long taskId);
+    void deleteByUserIdAndTaskId(Long userId, Long taskId);
 
     @Query("select coalesce(max(r.version), 0) from ResumeAnalysisReport r where r.resumeId = :resumeId")
     int maxVersion(@Param("resumeId") Long resumeId);

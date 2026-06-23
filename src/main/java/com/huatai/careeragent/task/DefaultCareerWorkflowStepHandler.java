@@ -1,6 +1,7 @@
 package com.huatai.careeragent.task;
 
 import com.huatai.careeragent.agent.workflow.CareerWorkflowService;
+import com.huatai.careeragent.agent.workflow.WorkflowStepResult;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -12,7 +13,7 @@ public class DefaultCareerWorkflowStepHandler implements CareerWorkflowStepHandl
     }
 
     @Override
-    public void execute(Long taskId, WorkflowStatus status) {
-        workflowService.executeStep(taskId, status);
+    public WorkflowStepResult execute(Long taskId, WorkflowStatus status) {
+        return workflowService.executeStep(taskId, status);
     }
 }

@@ -36,6 +36,42 @@ class LangGraphAgentWorkflowExecutorTest {
     }
 
     @Test
+    void acceptsLegalSubsequenceForSingleStepTask() {
+        AgentTaskRepository repository = mock(AgentTaskRepository.class);
+        CareerWorkflowRunner runner = mock(CareerWorkflowRunner.class);
+        AgentTask task = new AgentTask(7L, "trace-43", 10L, null,
+                List.of(WorkflowStatus.ANALYZING_RESUME));
+        when(repository.findById(43L)).thenReturn(Optional.of(task));
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        LangGraphAgentWorkflowExecutor executor = new LangGraphAgentWorkflowExecutor(
+                repository, runner, builder.build(), false
+        );
+        server.expect(requestTo("/v1/workflows/career/plan"))
+                .andRespond(withSuccess("""
+                        {"runId":"run-43","plannedStatuses":["ANALYZING_RESUME","SUCCESS"]}
+                        """, MediaType.APPLICATION_JSON));
+
+        executor.execute(43L);
+
+        verify(runner).run(43L, List.of(WorkflowStatus.ANALYZING_RESUME, WorkflowStatus.SUCCESS));
+        server.verify();
+    }
+
+    @Test
+    void rejectsPlanThatSkipsRequiredEnabledStep() {
+        Fixture fixture = fixture(false);
+        fixture.server.expect(requestTo("/v1/workflows/career/plan"))
+                .andRespond(withSuccess("""
+                        {"runId":"run-skip","plannedStatuses":["MATCHING_JOB","GENERATING_FINAL_REPORT","SUCCESS"]}
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> fixture.executor.execute(42L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("LangGraph orchestration failed");
+    }
+
+    @Test
     void rejectsInvalidRemotePlanWhenFallbackIsDisabled() {
         Fixture fixture = fixture(false);
         fixture.server.expect(requestTo("/v1/workflows/career/plan"))

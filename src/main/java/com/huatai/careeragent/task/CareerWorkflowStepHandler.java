@@ -1,5 +1,7 @@
 package com.huatai.careeragent.task;
 
+import com.huatai.careeragent.agent.workflow.WorkflowStepResult;
+
 public interface CareerWorkflowStepHandler {
-    void execute(Long taskId, WorkflowStatus status);
+    WorkflowStepResult execute(Long taskId, WorkflowStatus status);
 }

@@ -13,4 +13,5 @@ public interface InterviewQuestionRepository extends JpaRepository<InterviewQues
             Long userId, Long resumeId, Long jobId
     );
     Optional<InterviewQuestion> findByIdAndUserId(Long id, Long userId);
+    void deleteByUserIdAndTaskId(Long userId, Long taskId);
 }

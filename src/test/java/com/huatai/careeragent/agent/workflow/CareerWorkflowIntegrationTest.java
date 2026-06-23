@@ -122,7 +122,7 @@ class CareerWorkflowIntegrationTest {
 
         assertThat(jobMatchReportRepository.findAll()).hasSize(1);
         assertThat(resumeAnalysisReportRepository.findAll()).hasSize(1);
-        assertThat(interviewQuestionRepository.findAll()).hasSize(2);
+        assertThat(interviewQuestionRepository.findAll()).hasSize(5);
         assertThat(finalReportRepository.findAll()).hasSize(1);
         // Includes schema repair and the public interview knowledge lookup; both must be visible in the timeline.
         var toolCalls = toolCallLogRepository.findByTaskIdOrderByCreatedAtAscIdAsc(fullTaskId);
@@ -153,7 +153,7 @@ class CareerWorkflowIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.report.jobMatch.version").value(1))
                 .andExpect(jsonPath("$.data.report.resumeAnalysis.version").value(1))
-                .andExpect(jsonPath("$.data.report.interviewQuestions.count").value(2));
+                .andExpect(jsonPath("$.data.report.interviewQuestions.count").value(5));
         mockMvc.perform(post("/api/reports/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"taskId\":" + fullTaskId + "}")
@@ -197,7 +197,7 @@ class CareerWorkflowIntegrationTest {
                 .containsExactlyInAnyOrder(1, 2);
 
         awaitStatus(createQuestionTask(owner), WorkflowStatus.SUCCESS);
-        assertThat(interviewQuestionRepository.findAll()).hasSize(4);
+        assertThat(interviewQuestionRepository.findAll()).hasSize(10);
 
         mockMvc.perform(get("/api/jobs/{jobId}/match-reports", owner.jobId())
                         .header("Authorization", "Bearer " + otherToken))
@@ -354,7 +354,9 @@ class CareerWorkflowIntegrationTest {
         mockMvc.perform(get("/api/career-tasks/{taskId}/logs", taskId)
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(19))
+                .andExpect(jsonPath("$.data.items.length()").value(30))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'VERIFICATION_PASSED')]").value(hasSize(4)))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'ROUTE_DECIDED')]").value(hasSize(4)))
                 .andExpect(jsonPath("$.data.items[?(@.status == 'HANDOFF_COMPLETED')]").value(hasSize(3)));
         mockMvc.perform(get("/api/reports").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isOk())
@@ -490,7 +492,13 @@ class CareerWorkflowIntegrationTest {
                   {"question":"Explain transaction isolation","questionType":"TECHNICAL","difficulty":"MEDIUM",
                    "expectedPoints":["Isolation levels"],"citations":[],"noCitationReason":"General technical question"},
                   {"question":"Design a task platform","questionType":"SYSTEM_DESIGN","difficulty":"HARD",
-                   "expectedPoints":["Reliability"],"citations":[],"noCitationReason":"General system design question"}
+                   "expectedPoints":["Reliability"],"citations":[],"noCitationReason":"General system design question"},
+                  {"question":"Describe a project tradeoff","questionType":"PROJECT","difficulty":"MEDIUM",
+                   "expectedPoints":["Context","Tradeoff","Outcome"],"citations":[],"noCitationReason":"General project question"},
+                  {"question":"How do you handle production incidents?","questionType":"BEHAVIORAL","difficulty":"EASY",
+                   "expectedPoints":["Ownership","Communication"],"citations":[],"noCitationReason":"General behavioral question"},
+                  {"question":"How would you optimize slow SQL?","questionType":"TECHNICAL","difficulty":"HARD",
+                   "expectedPoints":["Execution plan","Indexes"],"citations":[],"noCitationReason":"General technical question"}
                 ]}
                 """;
     }

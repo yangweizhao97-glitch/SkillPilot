@@ -42,4 +42,15 @@ public class CareerTaskStateService {
                 .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
         executionLogRepository.save(AgentExecutionLog.completed(task, status, durationMs));
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordWorkflowEvent(Long taskId, WorkflowStatus status, String agentName,
+                                    com.huatai.careeragent.task.log.ExecutionLogStatus eventStatus,
+                                    String outputSummary, long durationMs, String errorMessage) {
+        AgentTask task = agentTaskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
+        executionLogRepository.save(AgentExecutionLog.workflowEvent(
+                task, status, agentName, eventStatus, outputSummary, durationMs, errorMessage
+        ));
+    }
 }

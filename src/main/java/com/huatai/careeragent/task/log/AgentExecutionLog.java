@@ -99,6 +99,22 @@ public class AgentExecutionLog {
         return log;
     }
 
+    public static AgentExecutionLog workflowEvent(
+            AgentTask task,
+            WorkflowStatus status,
+            String agentName,
+            ExecutionLogStatus eventStatus,
+            String outputSummary,
+            long durationMs,
+            String errorMessage
+    ) {
+        AgentExecutionLog log = new AgentExecutionLog(task, status, eventStatus, errorMessage);
+        log.agentName = agentName == null || agentName.isBlank() ? WORKFLOW_AGENT : agentName;
+        log.outputSummary = log.summarize(outputSummary);
+        log.durationMs = durationMs;
+        return log;
+    }
+
     public static AgentExecutionLog agentExecution(
             Long userId,
             Long taskId,

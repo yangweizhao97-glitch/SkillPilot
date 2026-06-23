@@ -13,6 +13,7 @@ public interface JobMatchReportRepository extends JpaRepository<JobMatchReport, 
             Long userId, Long resumeId, Long jobId
     );
     Optional<JobMatchReport> findByUserIdAndTaskId(Long userId, Long taskId);
+    void deleteByUserIdAndTaskId(Long userId, Long taskId);
 
     @Query("select coalesce(max(r.version), 0) from JobMatchReport r where r.resumeId = :resumeId and r.jobId = :jobId")
     int maxVersion(@Param("resumeId") Long resumeId, @Param("jobId") Long jobId);

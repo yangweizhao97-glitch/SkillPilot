@@ -62,7 +62,7 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
                     ))
                     .retrieve()
                     .body(WorkflowPlanResponse.class);
-            plan = validatePlan(response);
+            plan = validatePlan(response, task);
             log.info("LangGraph workflow plan accepted: taskId={}, runId={}, steps={}",
                     taskId, response.runId(), plan);
         } catch (RuntimeException exception) {
@@ -76,7 +76,7 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
         runner.run(taskId, plan);
     }
 
-    private List<WorkflowStatus> validatePlan(WorkflowPlanResponse response) {
+    private List<WorkflowStatus> validatePlan(WorkflowPlanResponse response, AgentTask task) {
         if (response == null || response.plannedStatuses() == null || response.runId() == null
                 || response.runId().isBlank()) {
             throw new IllegalArgumentException("LangGraph returned an incomplete workflow plan");
@@ -87,10 +87,40 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("LangGraph returned an unknown workflow status", exception);
         }
-        if (!statuses.equals(CareerWorkflowRunner.EXECUTION_ORDER)) {
-            throw new IllegalArgumentException("LangGraph plan violates the career workflow state contract");
+        if (!isLegalSubsequence(statuses)) {
+            throw new IllegalArgumentException("LangGraph plan violates the career workflow ordering contract");
+        }
+        List<WorkflowStatus> required = requiredStatuses(task);
+        if (!statuses.containsAll(required)) {
+            throw new IllegalArgumentException("LangGraph plan skipped a required career workflow step");
         }
         return statuses;
+    }
+
+    private boolean isLegalSubsequence(List<WorkflowStatus> statuses) {
+        if (statuses.isEmpty() || statuses.getLast() != WorkflowStatus.SUCCESS
+                || statuses.stream().distinct().count() != statuses.size()) {
+            return false;
+        }
+        int cursor = -1;
+        for (WorkflowStatus status : statuses) {
+            int index = CareerWorkflowRunner.EXECUTION_ORDER.indexOf(status);
+            if (index < 0 || index <= cursor) {
+                return false;
+            }
+            cursor = index;
+        }
+        return true;
+    }
+
+    private List<WorkflowStatus> requiredStatuses(AgentTask task) {
+        java.util.ArrayList<WorkflowStatus> required = new java.util.ArrayList<>();
+        required.addAll(task.getEnabledSteps());
+        if (task.getJobId() != null) {
+            required.add(WorkflowStatus.GENERATING_FINAL_REPORT);
+        }
+        required.add(WorkflowStatus.SUCCESS);
+        return List.copyOf(required);
     }
 
     @Override

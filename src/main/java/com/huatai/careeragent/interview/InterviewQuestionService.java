@@ -33,6 +33,10 @@ public class InterviewQuestionService {
 
     @Transactional
     public List<InterviewQuestionResponse> save(Long userId, Long resumeId, Long jobId, Long taskId, JsonNode result) {
+        if (taskId != null) {
+            repository.deleteByUserIdAndTaskId(userId, taskId);
+            repository.flush();
+        }
         List<InterviewQuestion> questions = new ArrayList<>();
         for (JsonNode item : result.path("questions")) {
             List<String> expectedPoints = strings(item.path("expectedPoints"));
