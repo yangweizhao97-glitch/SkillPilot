@@ -23,6 +23,7 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
     private final CareerWorkflowRunner runner;
     private final RestClient client;
     private final boolean fallbackEnabled;
+    private final WorkflowPlanPolicy planPolicy;
 
     public LangGraphAgentWorkflowExecutor(
             AgentTaskRepository taskRepository,
@@ -30,7 +31,8 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
             @Value("${career-agent.workflow.langgraph.base-url:http://localhost:8090}") String baseUrl,
             @Value("${career-agent.workflow.langgraph.connect-timeout:2s}") Duration connectTimeout,
             @Value("${career-agent.workflow.langgraph.read-timeout:10s}") Duration readTimeout,
-            @Value("${career-agent.workflow.langgraph.fallback-enabled:true}") boolean fallbackEnabled
+            @Value("${career-agent.workflow.langgraph.fallback-enabled:true}") boolean fallbackEnabled,
+            WorkflowPlanPolicy planPolicy
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);
@@ -38,15 +40,23 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
         this.taskRepository = taskRepository;
         this.runner = runner;
         this.fallbackEnabled = fallbackEnabled;
+        this.planPolicy = planPolicy;
         this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
     }
 
     LangGraphAgentWorkflowExecutor(AgentTaskRepository taskRepository, CareerWorkflowRunner runner,
                                    RestClient client, boolean fallbackEnabled) {
+        this(taskRepository, runner, client, fallbackEnabled, new WorkflowPlanPolicy());
+    }
+
+    LangGraphAgentWorkflowExecutor(AgentTaskRepository taskRepository, CareerWorkflowRunner runner,
+                                   RestClient client, boolean fallbackEnabled,
+                                   WorkflowPlanPolicy planPolicy) {
         this.taskRepository = taskRepository;
         this.runner = runner;
         this.client = client;
         this.fallbackEnabled = fallbackEnabled;
+        this.planPolicy = planPolicy;
     }
 
     @Override
@@ -81,46 +91,7 @@ public class LangGraphAgentWorkflowExecutor implements AgentWorkflowExecutor {
                 || response.runId().isBlank()) {
             throw new IllegalArgumentException("LangGraph returned an incomplete workflow plan");
         }
-        List<WorkflowStatus> statuses;
-        try {
-            statuses = response.plannedStatuses().stream().map(WorkflowStatus::valueOf).toList();
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("LangGraph returned an unknown workflow status", exception);
-        }
-        if (!isLegalSubsequence(statuses)) {
-            throw new IllegalArgumentException("LangGraph plan violates the career workflow ordering contract");
-        }
-        List<WorkflowStatus> required = requiredStatuses(task);
-        if (!statuses.containsAll(required)) {
-            throw new IllegalArgumentException("LangGraph plan skipped a required career workflow step");
-        }
-        return statuses;
-    }
-
-    private boolean isLegalSubsequence(List<WorkflowStatus> statuses) {
-        if (statuses.isEmpty() || statuses.getLast() != WorkflowStatus.SUCCESS
-                || statuses.stream().distinct().count() != statuses.size()) {
-            return false;
-        }
-        int cursor = -1;
-        for (WorkflowStatus status : statuses) {
-            int index = CareerWorkflowRunner.EXECUTION_ORDER.indexOf(status);
-            if (index < 0 || index <= cursor) {
-                return false;
-            }
-            cursor = index;
-        }
-        return true;
-    }
-
-    private List<WorkflowStatus> requiredStatuses(AgentTask task) {
-        java.util.ArrayList<WorkflowStatus> required = new java.util.ArrayList<>();
-        required.addAll(task.getEnabledSteps());
-        if (task.getJobId() != null) {
-            required.add(WorkflowStatus.GENERATING_FINAL_REPORT);
-        }
-        required.add(WorkflowStatus.SUCCESS);
-        return List.copyOf(required);
+        return planPolicy.validateRemotePlan(response.runId(), response.plannedStatuses(), task);
     }
 
     @Override

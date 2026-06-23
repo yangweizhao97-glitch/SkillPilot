@@ -16,6 +16,10 @@ public record RouteDecision(
         return new RouteDecision(NextAction.SKIP_STEP, reason);
     }
 
+    public static RouteDecision replan(String reason) {
+        return new RouteDecision(NextAction.REPLAN, reason);
+    }
+
     public static RouteDecision fail(String reason) {
         return new RouteDecision(NextAction.FAIL, reason);
     }

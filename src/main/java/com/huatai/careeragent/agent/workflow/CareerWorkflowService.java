@@ -118,6 +118,7 @@ public class CareerWorkflowService {
         signals.put("expectedPointsCoverage", ratio(withExpectedPoints, questionCount));
         signals.put("evidenceCoverage", ratio(withEvidence, questionCount));
         signals.put("questionIds", questions.stream().map(InterviewQuestionResponse::questionId).toList());
+        signals.putAll(result.metadata());
         Long artifactId = questions.isEmpty() ? null : questions.getFirst().questionId();
         return new WorkflowStepResult(WorkflowStatus.GENERATING_QUESTIONS, AgentNames.INTERVIEW_QUESTION_AGENT,
                 "INTERVIEW_QUESTIONS", artifactId, signals);

@@ -12,7 +12,8 @@ public final class CareerTaskDtos {
     public record CreateCareerTaskRequest(
             @NotNull Long resumeId,
             @NotNull Long jobId,
-            List<WorkflowStatus> enabledSteps
+            List<WorkflowStatus> enabledSteps,
+            List<WorkflowStatus> optionalSteps
     ) {
     }
 
@@ -25,6 +26,7 @@ public final class CareerTaskDtos {
             Long resumeId,
             Long jobId,
             List<WorkflowStatus> enabledSteps,
+            List<WorkflowStatus> optionalSteps,
             String errorMessage,
             Instant createdAt,
             Instant updatedAt,
@@ -34,8 +36,9 @@ public final class CareerTaskDtos {
         public static CareerTaskResponse from(AgentTask task) {
             return new CareerTaskResponse(
                     task.getId(), task.getTraceId(), task.getTaskType(), task.getStatus(), task.getProgress(),
-                    task.getResumeId(), task.getJobId(), task.getEnabledSteps(), task.getErrorMessage(),
-                    task.getCreatedAt(), task.getUpdatedAt(), task.getStartedAt(), task.getFinishedAt()
+                    task.getResumeId(), task.getJobId(), task.getEnabledSteps(), task.getOptionalSteps(),
+                    task.getErrorMessage(), task.getCreatedAt(), task.getUpdatedAt(), task.getStartedAt(),
+                    task.getFinishedAt()
             );
         }
     }

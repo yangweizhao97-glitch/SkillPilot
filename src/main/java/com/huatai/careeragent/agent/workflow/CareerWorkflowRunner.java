@@ -2,6 +2,8 @@ package com.huatai.careeragent.agent.workflow;
 
 import com.huatai.careeragent.task.CareerTaskStateService;
 import com.huatai.careeragent.task.CareerWorkflowStepHandler;
+import com.huatai.careeragent.task.AgentTask;
+import com.huatai.careeragent.task.AgentTaskRepository;
 import com.huatai.careeragent.task.WorkflowStatus;
 import com.huatai.careeragent.agent.handoff.HandoffCoordinator;
 import com.huatai.careeragent.task.log.ExecutionLogStatus;
@@ -23,25 +25,34 @@ public class CareerWorkflowRunner {
     );
 
     private final CareerTaskStateService stateService;
+    private final AgentTaskRepository taskRepository;
     private final CareerWorkflowStepHandler stepHandler;
     private final HandoffCoordinator handoffCoordinator;
     private final WorkflowStepVerifierRegistry verifierRegistry;
     private final WorkflowRouter workflowRouter;
+    private final WorkflowReplanner workflowReplanner;
 
-    public CareerWorkflowRunner(CareerTaskStateService stateService, CareerWorkflowStepHandler stepHandler,
+    public CareerWorkflowRunner(CareerTaskStateService stateService,
+                                AgentTaskRepository taskRepository,
+                                CareerWorkflowStepHandler stepHandler,
                                 HandoffCoordinator handoffCoordinator,
                                 WorkflowStepVerifierRegistry verifierRegistry,
-                                WorkflowRouter workflowRouter) {
+                                WorkflowRouter workflowRouter,
+                                WorkflowReplanner workflowReplanner) {
         this.stateService = stateService;
+        this.taskRepository = taskRepository;
         this.stepHandler = stepHandler;
         this.handoffCoordinator = handoffCoordinator;
         this.verifierRegistry = verifierRegistry;
         this.workflowRouter = workflowRouter;
+        this.workflowReplanner = workflowReplanner;
     }
 
     public void run(Long taskId, List<WorkflowStatus> executionOrder) {
+        AgentTask task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new IllegalStateException("Career task not found: " + taskId));
         List<WorkflowStatus> activeAgentSteps = handoffCoordinator.activeAgentSteps(taskId, executionOrder);
-        WorkflowRuntime runtime = new WorkflowRuntime(taskId, plan(activeAgentSteps));
+        WorkflowRuntime runtime = new WorkflowRuntime(taskId, plan(activeAgentSteps, task.getOptionalSteps()));
         while (runtime.hasNext()) {
             WorkflowPlanStep current = runtime.currentStep();
             WorkflowStatus status = current.status();
@@ -52,6 +63,8 @@ public class CareerWorkflowRunner {
             }
             if (decision.action() != NextAction.SKIP_STEP) {
                 runtime.visit(current.agentName());
+            } else {
+                recordSkip(taskId, status, current.agentName(), decision);
             }
             if (decision.action() == NextAction.CONTINUE && runtime.nextStep().isPresent()) {
                 handoffCoordinator.handoff(taskId, status, runtime.nextStep().get().status(),
@@ -62,10 +75,10 @@ public class CareerWorkflowRunner {
         stateService.transition(taskId, WorkflowStatus.SUCCESS);
     }
 
-    private WorkflowPlan plan(List<WorkflowStatus> activeAgentSteps) {
+    private WorkflowPlan plan(List<WorkflowStatus> activeAgentSteps, List<WorkflowStatus> optionalSteps) {
         List<WorkflowPlanStep> steps = activeAgentSteps.stream()
                 .map(status -> new WorkflowPlanStep(status, handoffCoordinator.agentFor(status),
-                        true, MAX_VERIFICATION_ATTEMPTS))
+                        !optionalSteps.contains(status), MAX_VERIFICATION_ATTEMPTS))
                 .toList();
         return new WorkflowPlan("spring-" + UUID.randomUUID(), steps);
     }
@@ -86,6 +99,11 @@ public class CareerWorkflowRunner {
             if (decision.action() == NextAction.RETRY_STEP) {
                 recordRetry(runtime.taskId(), current.status(), result, verification, attempt + 1);
                 continue;
+            }
+            if (decision.action() == NextAction.REPLAN) {
+                workflowReplanner.replan(runtime, verification);
+                throw new IllegalStateException("Workflow replanning returned a candidate plan, but dynamic plan "
+                        + "replacement is not enabled for the current task state machine");
             }
             return decision;
         }
@@ -129,6 +147,11 @@ public class CareerWorkflowRunner {
                 "Retrying workflow step: nextAttempt=" + nextAttempt
                         + ", reason=" + verification.reason(),
                 0, null);
+    }
+
+    private void recordSkip(Long taskId, WorkflowStatus status, String agentName, RouteDecision decision) {
+        stateService.recordWorkflowEvent(taskId, status, agentName, ExecutionLogStatus.STEP_SKIPPED,
+                "Workflow step skipped: reason=" + decision.reason(), 0, null);
     }
 
     private long elapsedMs(long started) {

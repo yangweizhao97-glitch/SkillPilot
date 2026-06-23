@@ -62,7 +62,7 @@ public class InterviewQuestionAgent implements Agent<InterviewQuestionAgent.Inpu
                 context.userId(), input.resumeId(), input.jobId(), context.taskId(), validated.value()
         );
         return AgentResult.success(saved, "interviewQuestionCount=" + saved.size(),
-                outputSupport.totalUsage(response.usage(), validated));
+                outputSupport.totalUsage(response.usage(), validated), assembled.sourceMetrics());
     }
 
     @Override public String summarizeInput(Input input) { return "resumeId=" + input.resumeId() + ",jobId=" + input.jobId(); }

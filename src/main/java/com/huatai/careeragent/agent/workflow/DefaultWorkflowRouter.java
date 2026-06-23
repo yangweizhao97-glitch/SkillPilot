@@ -17,8 +17,11 @@ public class DefaultWorkflowRouter implements WorkflowRouter {
                 && runtime.attempts(step.status()) < step.maxAttempts()) {
             return RouteDecision.retry("Retry allowed: " + verification.reason());
         }
+        if (!step.required()) {
+            return RouteDecision.skip("Optional step did not pass verification: " + verification.reason());
+        }
         if (verification.nextAction() == NextAction.REPLAN) {
-            return RouteDecision.fail("Replan is not enabled in the local router yet: " + verification.reason());
+            return RouteDecision.replan("Verifier requested replanning: " + verification.reason());
         }
         return RouteDecision.fail("Required workflow step failed verification: " + verification.reason());
     }

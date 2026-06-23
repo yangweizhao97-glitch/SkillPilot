@@ -283,6 +283,50 @@ class CareerTaskControllerTest {
     }
 
     @Test
+    void skipsOptionalStepAfterRetryBudgetIsExhausted() throws Exception {
+        AuthenticatedResources owner = createAuthenticatedResources();
+        AtomicInteger questionAttempts = new AtomicInteger();
+        doAnswer(invocation -> {
+            WorkflowStatus status = invocation.getArgument(1);
+            if (status == WorkflowStatus.GENERATING_QUESTIONS) {
+                questionAttempts.incrementAndGet();
+                return lowQualityQuestionResult();
+            }
+            return workflowResult(status);
+        }).when(stepHandler).execute(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(WorkflowStatus.class));
+
+        String response = mockMvc.perform(post("/api/career-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resumeId": %d,
+                                  "jobId": %d,
+                                  "enabledSteps": ["GENERATING_QUESTIONS"],
+                                  "optionalSteps": ["GENERATING_QUESTIONS"]
+                                }
+                                """.formatted(owner.resumeId(), owner.jobId()))
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.optionalSteps[0]").value("GENERATING_QUESTIONS"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        Long taskId = objectMapper.readTree(response).path("data").path("taskId").asLong();
+
+        AgentTask completed = awaitStatus(taskId, WorkflowStatus.SUCCESS);
+
+        assertThat(questionAttempts).hasValue(2);
+        var logs = executionLogRepository.findByTaskIdAndUserIdOrderByCreatedAtAscIdAsc(
+                taskId, completed.getUserId()
+        );
+        assertThat(logs).extracting(AgentExecutionLog::getStatus)
+                .contains(ExecutionLogStatus.STEP_RETRYING,
+                        ExecutionLogStatus.STEP_SKIPPED,
+                        ExecutionLogStatus.TASK_COMPLETED);
+    }
+
+    @Test
     void rejectsResourcesOwnedByAnotherUserAndInvalidSteps() throws Exception {
         AuthenticatedResources owner = createAuthenticatedResources();
         String otherToken = registerAndLogin().token();
@@ -311,6 +355,20 @@ class CareerTaskControllerTest {
                         .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("INVALID_ENABLED_STEP"));
+
+        mockMvc.perform(post("/api/career-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resumeId": %d,
+                                  "jobId": %d,
+                                  "enabledSteps": ["MATCHING_JOB"],
+                                  "optionalSteps": ["GENERATING_QUESTIONS"]
+                                }
+                                """.formatted(owner.resumeId(), owner.jobId()))
+                        .header("Authorization", "Bearer " + owner.token()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("INVALID_OPTIONAL_STEP"));
     }
 
     @Test

@@ -51,6 +51,10 @@ public class AgentTask {
     @Column(name = "enabled_steps", nullable = false, columnDefinition = "jsonb")
     private List<WorkflowStatus> enabledSteps = new ArrayList<>();
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "optional_steps", nullable = false, columnDefinition = "jsonb")
+    private List<WorkflowStatus> optionalSteps = new ArrayList<>();
+
     @Column(name = "error_message")
     private String errorMessage;
 
@@ -72,12 +76,18 @@ public class AgentTask {
     }
 
     public AgentTask(Long userId, String traceId, Long resumeId, Long jobId, List<WorkflowStatus> enabledSteps) {
+        this(userId, traceId, resumeId, jobId, enabledSteps, List.of());
+    }
+
+    public AgentTask(Long userId, String traceId, Long resumeId, Long jobId,
+                     List<WorkflowStatus> enabledSteps, List<WorkflowStatus> optionalSteps) {
         this.userId = userId;
         this.traceId = traceId;
         this.taskType = CareerTaskType.CAREER_PREPARE;
         this.resumeId = resumeId;
         this.jobId = jobId;
         this.enabledSteps = new ArrayList<>(enabledSteps);
+        this.optionalSteps = new ArrayList<>(optionalSteps);
     }
 
     public void transitionTo(WorkflowStatus next) {
@@ -131,6 +141,7 @@ public class AgentTask {
     public Long getResumeId() { return resumeId; }
     public Long getJobId() { return jobId; }
     public List<WorkflowStatus> getEnabledSteps() { return List.copyOf(enabledSteps); }
+    public List<WorkflowStatus> getOptionalSteps() { return List.copyOf(optionalSteps); }
     public String getErrorMessage() { return errorMessage; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getFinishedAt() { return finishedAt; }

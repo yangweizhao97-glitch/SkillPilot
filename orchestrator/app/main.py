@@ -12,6 +12,24 @@ class CareerPlanRequest(BaseModel):
     enabledSteps: list[str]
 
 
+class VerificationResult(BaseModel):
+    passed: bool
+    nextAction: str
+    reason: str | None = None
+    metrics: dict = Field(default_factory=dict)
+
+
+class CareerReplanRequest(BaseModel):
+    taskId: int = Field(gt=0)
+    traceId: str = Field(min_length=1, max_length=80)
+    enabledSteps: list[str]
+    currentPlan: list[str]
+    failedStep: str
+    failedAgent: str | None = None
+    verification: VerificationResult
+    runtime: dict = Field(default_factory=dict)
+
+
 class CareerPlanResponse(BaseModel):
     runId: str
     plannedStatuses: list[str]
@@ -38,5 +56,24 @@ def plan_career_workflow(request: CareerPlanRequest) -> CareerPlanResponse:
     })
     return CareerPlanResponse(
         runId=f"{request.traceId}:{uuid4().hex}",
+        plannedStatuses=result["planned_statuses"],
+    )
+
+
+@app.post("/v1/workflows/career/replan", response_model=CareerPlanResponse)
+def replan_career_workflow(request: CareerReplanRequest) -> CareerPlanResponse:
+    known = set(WORKFLOW_STATUSES)
+    unknown_enabled = set(request.enabledSteps) - set(WORKFLOW_STATUSES[:3])
+    unknown_plan = set(request.currentPlan) - known
+    if request.failedStep not in known or unknown_enabled or unknown_plan:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Unknown workflow status in replan request")
+    result = career_plan_graph.invoke({
+        "enabled_steps": request.enabledSteps,
+        "planned_statuses": [],
+    })
+    return CareerPlanResponse(
+        runId=f"{request.traceId}:replan:{uuid4().hex}",
         plannedStatuses=result["planned_statuses"],
     )
