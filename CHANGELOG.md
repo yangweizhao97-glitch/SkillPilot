@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 - 2026-06-24
+
+- Reworked the product into a conversation-first Career Agent with Agent Chat and Report as the two primary workspace entries.
+- Added structured career-intent routing, required-resource detection, existing resume/job/report selection, and workflow action planning.
+- Added persisted career profiles, conversations, and typed messages for user text, assistant replies, process summaries, resource cards, workflow status, and report completion.
+- Added authenticated Career Agent SSE with immediate user-message feedback, planning status events, provider-level answer deltas, completion events, and failure handling.
+- Embedded resume and JD upload/selection into the conversation flow and connected Agent plans to the existing asynchronous career-analysis workflow.
+- Reused recoverable task SSE inside the conversation UI for live workflow progress, retry actions, and report-ready updates.
+- Simplified the frontend navigation around the Agent entry point while retaining reports as durable, reusable result assets.
+- Added Flyway migrations, backend service tests, frontend SSE parser coverage, and updated project presentation documentation.
+
 ## 0.2.10 - 2026-06-21
 
 - Removed fictitious disabled workflow transitions so career-task events reflect only agents that actually ran.

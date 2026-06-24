@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.huatai</groupId>
 	<artifactId>career-agent</artifactId>
-	<version>0.2.10</version>
+	<version>0.3.0</version>
 	<name>career-agent</name>
 	<description>CareerAgent AI career assistant</description>
 	<url/>

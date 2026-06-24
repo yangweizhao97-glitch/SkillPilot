@@ -67,4 +67,32 @@ describe('API client', () => {
       .rejects.toThrow('面试回答处理失败，请重试')
     expect(events).toEqual(['INTERVIEW_ANSWER_RECEIVED', 'INTERVIEW_FAILED'])
   })
+
+  it('emits Career Agent deltas and returns the completed plan', async () => {
+    session.set('agent-stream-token')
+    const body = [
+      'event:AGENT_MESSAGE_RECEIVED', 'data:{"message":"消息已发送"}', '',
+      'event:AGENT_DELTA', 'data:{"delta":"先准备"}', '',
+      'event:AGENT_DELTA', 'data:{"delta":"项目表达"}', '',
+      'event:AGENT_COMPLETED',
+      'data:{"profile":{"suggestedPrompts":[]},"suggestedPrompts":[],"messages":[],"assistantMessage":"先准备项目表达"}',
+      '', '',
+    ].join('\n')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, {
+      status: 200, headers: { 'Content-Type': 'text/event-stream' },
+    }))
+    const deltas: string[] = []
+
+    const plan = await api.streamCareerAgentPlan({
+      message: '应该准备什么？',
+      executeWorkflow: true,
+    }, (event, data) => {
+      if (event === 'AGENT_DELTA') deltas.push(String(data.delta))
+    })
+
+    expect(deltas).toEqual(['先准备', '项目表达'])
+    expect(plan.assistantMessage).toBe('先准备项目表达')
+    const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer agent-stream-token')
+  })
 })

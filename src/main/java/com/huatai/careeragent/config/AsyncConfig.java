@@ -62,4 +62,9 @@ public class AsyncConfig {
     public ExecutorService careerTaskStreamExecutor() {
         return Executors.newVirtualThreadPerTaskExecutor();
     }
+
+    @Bean(name = "careerAgentStreamExecutor")
+    public ExecutorService careerAgentStreamExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
+    }
 }

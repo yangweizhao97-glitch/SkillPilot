@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import {
   Activity, ArrowLeft, BarChart3, BookOpen, Bot, BriefcaseBusiness, Check, ChevronRight, CircleAlert, Clock3,
-  Download, FileText, LayoutDashboard, ListChecks, LogOut, Menu, MessageSquare, RefreshCw, Send,
-  Sparkles, Square, Trash2, Upload, X
+  Download, FileText, ListChecks, LogOut, MessageSquare, RefreshCw, Send,
+  Sparkles, Square, Trash2, Upload, X, Plus
 } from 'lucide-react'
-import { api, session, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type LearningPlanInterviewQuestion, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TechnicalDetail, type TutorSession, type TutorSessionSummary, type User, type UserTaskStep } from './api'
+import { api, session, type AgentMessage, type AgentMessageType, type AgentRequiredResource, type CareerAgentProfile, type CareerTask, type InterviewMemory, type InterviewQuestionAnswer, type InterviewReview, type InterviewSession, type InterviewSessionSummary, type Job, type LearningPlan, type LearningPlanInterviewQuestion, type ReportDetail, type ReportSummary, type Resume, type TaskEventSnapshot, type TechnicalDetail, type TutorSession, type TutorSessionSummary, type User, type UserTaskStep } from './api'
 import './App.css'
 
-type View = 'overview' | 'prepare' | 'tasks' | 'reports' | 'interviews' | 'tutor'
 type InterviewItem = { questionId: number; question: string; questionType: string; difficulty: string; expectedPoints?: string[]; citations?: string[]; noCitationReason?: string }
 type AggregatedReport = {
   status: string; citations?: string[]; resume?: { title: string }; job?: { company?: string; position: string };
@@ -82,14 +81,12 @@ function AuthPage({ onAuthenticated }: { onAuthenticated: (user: User) => void }
 }
 
 function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const [view, setView] = useState<View>('overview')
+  const [section, setSection] = useState<'agent' | 'reports'>('agent')
   const [tasks, setTasks] = useState<CareerTask[]>([])
   const [reports, setReports] = useState<ReportSummary[]>([])
   const [resumes, setResumes] = useState<Resume[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
-  const [selectedTask, setSelectedTask] = useState<number | null>(null)
   const [selectedReport, setSelectedReport] = useState<number | null>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -105,38 +102,39 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
     return () => window.clearInterval(timer)
   }, [tasks, load])
 
-  const navigate = (next: View) => { setView(next); setSelectedTask(null); setSelectedReport(null); setMenuOpen(false) }
-  const title = selectedTask ? '任务详情' : selectedReport ? '报告详情' : ({ overview: '工作台', prepare: '新建分析', tasks: '任务', reports: '报告', interviews: '模拟面试', tutor: 'AI 答疑' } as const)[view]
-
-  return <div className="workspace">
-    <aside className={menuOpen ? 'sidebar open' : 'sidebar'}>
-      <div className="sidebar-brand"><div className="brand-mark"><Sparkles size={19} /></div><strong>SkillPilot</strong><button className="icon mobile-close" onClick={() => setMenuOpen(false)} aria-label="关闭菜单"><X /></button></div>
-      <nav>
-        <NavButton active={view === 'overview'} icon={<LayoutDashboard />} label="工作台" onClick={() => navigate('overview')} />
-        <NavButton active={view === 'prepare'} icon={<Upload />} label="新建分析" onClick={() => navigate('prepare')} />
-        <NavButton active={view === 'tasks'} icon={<ListChecks />} label="任务" badge={tasks.filter(t => !['SUCCESS', 'FAILED'].includes(t.status)).length} onClick={() => navigate('tasks')} />
-        <NavButton active={view === 'reports'} icon={<BarChart3 />} label="报告" onClick={() => navigate('reports')} />
-        <NavButton active={view === 'interviews'} icon={<MessageSquare />} label="模拟面试" onClick={() => navigate('interviews')} />
-        <NavButton active={view === 'tutor'} icon={<Bot />} label="AI 答疑" onClick={() => navigate('tutor')} />
-      </nav>
-      <div className="account"><div className="avatar">{(user.nickname || user.email).slice(0, 1).toUpperCase()}</div><div><strong>{user.nickname || '用户'}</strong><span>{user.email}</span></div><button className="icon" onClick={onLogout} title="退出登录"><LogOut /></button></div>
-    </aside>
-    <main className="main">
-      <header className="topbar"><button className="icon menu-button" onClick={() => setMenuOpen(true)} aria-label="打开菜单"><Menu /></button><div><span className="eyebrow">CAREER WORKSPACE</span><h1>{title}</h1></div><button className="icon" onClick={() => void load()} title="刷新"><RefreshCw /></button></header>
-      {error && <div className="global-alert"><CircleAlert size={17} />{error}</div>}
-      <div className="content">
-        {selectedTask ? <TaskDetail id={selectedTask} onBack={() => setSelectedTask(null)} onChanged={load} onRetry={setSelectedTask} onReport={reportId => { setView('reports'); setSelectedTask(null); setSelectedReport(reportId) }} /> :
-         selectedReport ? <ReportDetailView id={selectedReport} onBack={() => setSelectedReport(null)} /> :
-         view === 'overview' ? <Overview tasks={tasks} reports={reports} resumes={resumes} jobs={jobs} onNew={() => navigate('prepare')} onTask={id => { setView('tasks'); setSelectedTask(id) }} onReport={id => { setView('reports'); setSelectedReport(id) }} /> :
-         view === 'prepare' ? <Prepare resumes={resumes} jobs={jobs} onCreated={async id => { await load(); setView('tasks'); setSelectedTask(id) }} onResourcesChanged={load} /> :
-         view === 'tasks' ? <TaskList tasks={tasks} onSelect={setSelectedTask} /> :
-         view === 'reports' ? <ReportList reports={reports} onSelect={setSelectedReport} /> :
-         view === 'interviews' ? <InterviewWorkspace resumes={resumes} jobs={jobs} /> :
-         <TutorWorkspace resumes={resumes} jobs={jobs} />}
+  return <div className="agent-shell">
+    <aside className="report-rail">
+      <div className="report-rail-brand">
+        <div className="brand-mark"><Sparkles size={19} /></div>
+        <div><strong>SkillPilot</strong><span>Career Agent</span></div>
       </div>
+      <div className="report-rail-actions">
+        <button className="secondary" onClick={() => void load()}><RefreshCw size={15} />刷新</button>
+        <button className="icon" onClick={onLogout} title="退出登录"><LogOut /></button>
+      </div>
+      {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
+      <nav className="agent-nav">
+        <button className={section === 'agent' ? 'active' : ''} onClick={() => setSection('agent')}><Bot size={17} /><span>Agent 对话</span></button>
+        <button className={section === 'reports' ? 'active' : ''} onClick={() => setSection('reports')}><FileText size={17} /><span>报告</span><b>{reports.length}</b></button>
+      </nav>
+      <div className="account compact"><div className="avatar">{(user.nickname || user.email).slice(0, 1).toUpperCase()}</div><div><strong>{user.nickname || '用户'}</strong><span>{user.email}</span></div></div>
+    </aside>
+    <main className="agent-main">
+      {section === 'agent'
+        ? <Prepare resumes={resumes} jobs={jobs} reports={reports} onResourcesChanged={load} onOpenReport={reportId => { setSelectedReport(reportId); setSection('reports') }} />
+        : <ReportsWorkspace reports={reports} selectedReport={selectedReport} onSelect={setSelectedReport} onBack={() => setSelectedReport(null)} />}
     </main>
-    {menuOpen && <button className="backdrop" onClick={() => setMenuOpen(false)} aria-label="关闭菜单" />}
   </div>
+}
+
+function ReportsWorkspace({ reports, selectedReport, onSelect, onBack }: {
+  reports: ReportSummary[]; selectedReport: number | null; onSelect: (id: number) => void; onBack: () => void
+}) {
+  return <section className="reports-workspace">
+    {selectedReport
+      ? <ReportDetailView id={selectedReport} onBack={onBack} />
+      : <><div className="reports-head"><div><span className="eyebrow">REPORT ARCHIVE</span><h2>历史报告</h2><p>这里只保留报告资产和详情；新的分析、追问、学习计划从 Agent 对话触发。</p></div><strong>{reports.length}</strong></div><ReportList reports={reports} onSelect={onSelect} /></>}
+  </section>
 }
 
 function TutorWorkspace({ resumes, jobs }: { resumes: Resume[]; jobs: Job[] }) {
@@ -425,7 +423,32 @@ function Overview({ tasks, reports, resumes, jobs, onNew, onTask, onReport }: { 
   </>
 }
 
-function Prepare({ resumes, jobs, onCreated, onResourcesChanged }: { resumes: Resume[]; jobs: Job[]; onCreated: (id: number) => void; onResourcesChanged: () => Promise<void> }) {
+const defaultAgentPrompts = ['分析简历和岗位匹配度', '生成面试准备报告', '帮我优化这份简历', '基于报告生成学习计划']
+
+function compactAgentMessages(messages: AgentMessage[]) {
+  const result: AgentMessage[] = []
+  const statusIndex = new Map<string, number>()
+  for (const message of messages) {
+    if (message.messageType === 'WORKFLOW_STATUS') {
+      const step = typeof message.metadata?.step === 'string' ? message.metadata.step : 'TASK'
+      const key = `${message.taskId || 'local'}:${step}`
+      const index = statusIndex.get(key)
+      if (index == null) {
+        statusIndex.set(key, result.length)
+        result.push(message)
+      } else {
+        result[index] = message
+      }
+    } else {
+      result.push(message)
+    }
+  }
+  return result
+}
+
+function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
+  resumes: Resume[]; jobs: Job[]; reports: ReportSummary[]; onResourcesChanged: () => Promise<void>; onOpenReport: (id: number) => void
+}) {
   const [resumeId, setResumeId] = useState(resumes[0]?.resumeId || 0)
   const [jobId, setJobId] = useState(jobs[0]?.jobId || 0)
   const [resumeFile, setResumeFile] = useState<File | null>(null)
@@ -433,8 +456,50 @@ function Prepare({ resumes, jobs, onCreated, onResourcesChanged }: { resumes: Re
   const [resumeTitle, setResumeTitle] = useState('')
   const [company, setCompany] = useState('')
   const [position, setPosition] = useState('')
+  const [goal, setGoal] = useState('')
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
+  const [activeTask, setActiveTask] = useState<CareerTask | null>(null)
+  const [steps, setSteps] = useState<UserTaskStep[]>([])
+  const [reportId, setReportId] = useState<number | null>(null)
+  const [taskError, setTaskError] = useState('')
+  const [profile, setProfile] = useState<CareerAgentProfile | null>(null)
+  const [suggestedPrompts, setSuggestedPrompts] = useState(defaultAgentPrompts)
+  const [messages, setMessages] = useState<AgentMessage[]>([])
+  const [streamText, setStreamText] = useState('')
+  const [agentState, setAgentState] = useState('')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const chatRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!resumeId && resumes[0]?.resumeId) setResumeId(resumes[0].resumeId)
+  }, [resumes, resumeId])
+  useEffect(() => {
+    if (!jobId && jobs[0]?.jobId) setJobId(jobs[0].jobId)
+  }, [jobs, jobId])
+  useEffect(() => {
+    if (!activeTaskId) return
+    const matched = reports.find(item => item.taskId === activeTaskId)?.reportId || null
+    if (matched) setReportId(matched)
+  }, [reports, activeTaskId])
+  useEffect(() => {
+    api.careerAgentProfile()
+      .then(next => {
+        setProfile(next)
+        if (next.suggestedPrompts.length) setSuggestedPrompts(next.suggestedPrompts)
+      })
+      .catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    api.careerAgentConversation()
+      .then(conversation => {
+        setMessages(conversation.messages)
+        setProfile(conversation.profile)
+        if (conversation.profile.suggestedPrompts.length) setSuggestedPrompts(conversation.profile.suggestedPrompts)
+      })
+      .catch(() => undefined)
+  }, [])
+  useEffect(() => { chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' }) }, [messages, steps, streamText, agentState])
 
   async function importResume() {
     if (!resumeFile || !resumeTitle.trim()) return
@@ -442,6 +507,13 @@ function Prepare({ resumes, jobs, onCreated, onResourcesChanged }: { resumes: Re
     try {
       const upload = await api.upload(resumeFile, 'RESUME'); const processed = await api.processFile(upload.fileId)
       const resume = await api.createResume(processed.documentId, resumeTitle); setResumeId(resume.resumeId); await onResourcesChanged()
+      const saved = await api.appendCareerAgentMessage({
+        role: 'SYSTEM',
+        messageType: 'TOOL_STATUS',
+        content: `已导入简历「${resume.title}」。现在可以继续告诉我你的目标。`,
+        metadata: { resourceType: 'RESUME', resumeId: resume.resumeId }
+      })
+      setMessages(current => [...current, saved])
     } catch (reason) { setError(reason instanceof Error ? reason.message : '简历导入失败') } finally { setBusy('') }
   }
   async function importJob() {
@@ -450,31 +522,427 @@ function Prepare({ resumes, jobs, onCreated, onResourcesChanged }: { resumes: Re
     try {
       const upload = await api.upload(jdFile, 'JD'); const processed = await api.processFile(upload.fileId)
       const job = await api.createJob(processed.documentId, company, position); setJobId(job.jobId); await onResourcesChanged()
+      const saved = await api.appendCareerAgentMessage({
+        role: 'SYSTEM',
+        messageType: 'TOOL_STATUS',
+        content: `已导入岗位「${job.company ? `${job.company} · ` : ''}${job.position}」。资料齐了就可以启动分析。`,
+        metadata: { resourceType: 'JOB', jobId: job.jobId }
+      })
+      setMessages(current => [...current, saved])
     } catch (reason) { setError(reason instanceof Error ? reason.message : '岗位导入失败') } finally { setBusy('') }
   }
-  async function start() {
-    setBusy('task'); setError('')
-    try { const task = await api.createTask(resumeId, jobId); onCreated(task.taskId) }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '任务创建失败') } finally { setBusy('') }
+
+  const refreshReport = useCallback(async (taskId: number) => {
+    const latestReports = await api.reports()
+    const matched = latestReports.find(item => item.taskId === taskId)?.reportId || null
+    setReportId(matched)
+  }, [])
+
+  useEffect(() => {
+    if (!activeTaskId) return
+    const controller = new AbortController()
+    let disposed = false
+    let terminal = false
+    let retryTimer = 0
+    let retryDelay = 500
+    let lastEventId: string | undefined
+    const recordedTerminalEvents = new Set<string>()
+
+    const loadCurrent = async () => {
+      try {
+        const [task, progress] = await Promise.all([api.task(activeTaskId), api.taskProgress(activeTaskId)])
+        if (disposed) return
+        setActiveTask(task)
+        setSteps(progress.steps || [])
+        setTaskError('')
+        if (task.status === 'SUCCESS') void refreshReport(activeTaskId)
+      } catch (reason) {
+        if (!disposed) setTaskError(reason instanceof Error ? reason.message : '任务状态加载失败')
+      }
+    }
+
+    const upsertStep = (item: UserTaskStep) => setSteps(current => current.some(step => step.step === item.step)
+      ? current.map(step => step.step === item.step ? item : step) : [...current, item])
+
+    const connect = async () => {
+      try {
+        await api.streamTaskEvents(activeTaskId, lastEventId, (event, data, eventId) => {
+          if (eventId) lastEventId = eventId
+          if (event === 'TASK_SNAPSHOT') {
+            const snapshot = data as unknown as TaskEventSnapshot
+            setActiveTask(snapshot.task)
+            setSteps(snapshot.steps || [])
+            terminal = ['SUCCESS', 'FAILED'].includes(snapshot.task.status)
+            if (snapshot.task.status === 'SUCCESS') void refreshReport(activeTaskId)
+          } else if (event === 'TASK_UPDATED' || event === 'TASK_STREAM_COMPLETED') {
+            const next = data as unknown as CareerTask
+            setActiveTask(next)
+            terminal = ['SUCCESS', 'FAILED'].includes(next.status)
+            if (next.status === 'SUCCESS') {
+              void refreshReport(activeTaskId)
+              if (!recordedTerminalEvents.has('TASK-SUCCESS')) {
+                recordedTerminalEvents.add('TASK-SUCCESS')
+                void api.appendCareerAgentMessage({
+                  role: 'SYSTEM',
+                  messageType: 'REPORT_READY',
+                  content: '报告已生成，岗位匹配、简历建议和面试题已经整理完成。',
+                  taskId: activeTaskId,
+                  metadata: { status: next.status, progress: next.progress }
+                }).then(saved => setMessages(current => current.some(message => message.messageId === saved.messageId) ? current : [...current, saved]))
+                  .catch(() => undefined)
+              }
+            }
+          } else if (event === 'USER_STEP_EVENT') {
+            const item = data as unknown as UserTaskStep
+            upsertStep(item)
+          }
+          setTaskError('')
+          retryDelay = 500
+        }, controller.signal)
+      } catch (reason) {
+        if (!disposed && !(reason instanceof DOMException && reason.name === 'AbortError')) {
+          setTaskError('实时连接中断，正在恢复…')
+          await loadCurrent()
+        }
+      }
+      if (!disposed && !terminal) {
+        retryTimer = window.setTimeout(() => void connect(), retryDelay)
+        retryDelay = Math.min(retryDelay * 2, 8000)
+      }
+    }
+
+    retryTimer = window.setTimeout(() => { void loadCurrent(); void connect() }, 0)
+    return () => {
+      disposed = true
+      controller.abort()
+      window.clearTimeout(retryTimer)
+    }
+  }, [activeTaskId, refreshReport])
+
+  async function submitGoal(message: string) {
+    setBusy('planning'); setError(''); setTaskError('')
+    const latestReportId = reports[0]?.reportId
+    const localMessageId = -Date.now()
+    const optimisticMessage: AgentMessage = {
+      messageId: localMessageId,
+      role: 'USER',
+      messageType: 'TEXT',
+      content: message,
+      metadata: {},
+      createdAt: new Date().toISOString()
+    }
+    setGoal('')
+    setStreamText('')
+    setAgentState('正在接收消息')
+    setMessages(current => [...current, optimisticMessage])
+    try {
+      const plan = await api.streamCareerAgentPlan({
+        message,
+        resumeId: resumeId || null,
+        jobId: jobId || null,
+        reportId: latestReportId || null,
+        executeWorkflow: true
+      }, (event, data) => {
+        if (event === 'AGENT_MESSAGE_RECEIVED' || event === 'AGENT_PLANNING' || event === 'AGENT_RESPONSE_READY') {
+          setAgentState(String(data.message || '正在处理'))
+        } else if (event === 'AGENT_DELTA') {
+          setAgentState('正在生成回答')
+          setStreamText(current => current + String(data.delta || ''))
+        }
+      })
+      setProfile(plan.profile)
+      if (plan.suggestedPrompts.length) setSuggestedPrompts(plan.suggestedPrompts)
+      if (plan.messages.length) {
+        setMessages(current => [...current.filter(item => item.messageId !== localMessageId), ...plan.messages])
+      }
+      setStreamText('')
+      setAgentState('')
+      if (plan.resumeId) setResumeId(plan.resumeId)
+      if (plan.jobId) setJobId(plan.jobId)
+      if (plan.task) {
+        setBusy('task')
+        setReportId(null)
+        setActiveTaskId(plan.task.taskId)
+        setActiveTask(plan.task)
+        setSteps([])
+        await onResourcesChanged()
+      }
+    }
+    catch (reason) {
+      setStreamText('')
+      setAgentState('')
+      setError(reason instanceof Error ? reason.message : 'Agent 处理失败')
+    } finally { setBusy('') }
+  }
+  async function start(event: FormEvent) {
+    event.preventDefault()
+    const message = goal.trim()
+    if (!message || busy) return
+    await submitGoal(message)
   }
 
-  return <div className="prepare-layout">
-    <section className="plain-section"><div className="step-title"><span>01</span><div><h2>选择简历</h2><p>{resumes.length} 份可用</p></div></div>
-      <select value={resumeId} onChange={e => setResumeId(Number(e.target.value))}><option value={0}>选择已有简历</option>{resumes.map(r => <option key={r.resumeId} value={r.resumeId}>{r.title}</option>)}</select>
-      <div className="separator"><span>或导入新简历</span></div>
-      <Field label="简历名称"><input value={resumeTitle} onChange={e => setResumeTitle(e.target.value)} placeholder="例如：后端工程师简历" /></Field>
-      <FilePicker file={resumeFile} onChange={setResumeFile} accept=".pdf,.doc,.docx,.txt,.md" />
-      <button className="secondary" onClick={() => void importResume()} disabled={!resumeFile || !resumeTitle || Boolean(busy)}>{busy === 'resume' ? '处理中...' : '导入简历'}<Upload size={16} /></button>
-    </section>
-    <section className="plain-section"><div className="step-title"><span>02</span><div><h2>选择岗位</h2><p>{jobs.length} 个可用</p></div></div>
-      <select value={jobId} onChange={e => setJobId(Number(e.target.value))}><option value={0}>选择已有岗位</option>{jobs.map(j => <option key={j.jobId} value={j.jobId}>{j.company ? `${j.company} · ` : ''}{j.position}</option>)}</select>
-      <div className="separator"><span>或导入新 JD</span></div>
-      <div className="form-row"><Field label="公司"><input value={company} onChange={e => setCompany(e.target.value)} /></Field><Field label="职位"><input value={position} onChange={e => setPosition(e.target.value)} /></Field></div>
-      <FilePicker file={jdFile} onChange={setJdFile} accept=".pdf,.doc,.docx,.txt,.md" />
-      <button className="secondary" onClick={() => void importJob()} disabled={!jdFile || !position || Boolean(busy)}>{busy === 'job' ? '处理中...' : '导入岗位'}<Upload size={16} /></button>
-    </section>
-    <section className="launch-band"><div><span className="eyebrow">03 · FULL WORKFLOW</span><h2>生成职业准备报告</h2><p>岗位匹配、简历分析、个性化面试题</p></div><button className="primary" onClick={() => void start()} disabled={!resumeId || !jobId || Boolean(busy)}>{busy === 'task' ? '正在创建...' : '开始分析'}<ChevronRight size={17} /></button></section>
-    {error && <div className="alert span-full"><CircleAlert size={16} />{error}</div>}
+  const activeResume = resumes.find(item => item.resumeId === resumeId)
+  const activeJob = jobs.find(item => item.jobId === jobId)
+  const memoryTags = [
+    ...(profile?.targetRoles || []),
+    ...(profile?.careerStages || []),
+    ...(profile?.weaknessTags || []).slice(0, 2)
+  ].slice(0, 5)
+  const displayedMessages = compactAgentMessages(messages)
+  const latestReport = reportId
+    ? reports.find(item => item.reportId === reportId) || reports.find(item => item.taskId === activeTaskId) || reports[0]
+    : reports.find(item => item.taskId === activeTaskId) || reports[0]
+
+  async function retryActiveTask() {
+    if (!activeTask) return
+    setBusy('task'); setTaskError('')
+    try {
+      const next = await api.retryTask(activeTask.taskId)
+      setActiveTaskId(next.taskId)
+      setActiveTask(next)
+      setSteps([])
+      setReportId(null)
+      await onResourcesChanged()
+    } catch (reason) {
+      setTaskError(reason instanceof Error ? reason.message : '任务重试失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return <section className="career-agent-console">
+    <div className="agent-chat-topbar">
+      <div>
+        <span className="eyebrow">CAREER AGENT</span>
+        <h2>简历检查 + AI 求职助手</h2>
+      </div>
+      <div className="agent-context-pills">
+        <span title={activeResume?.title || '未选择简历'}><FileText size={13} />{activeResume?.title || '当前简历'}</span>
+        <span title={activeJob ? `${activeJob.company ? `${activeJob.company} · ` : ''}${activeJob.position}` : '未选择岗位'}><BriefcaseBusiness size={13} />{activeJob ? activeJob.position : '目标岗位'}</span>
+        <button type="button" disabled={!latestReport} onClick={() => latestReport && onOpenReport(latestReport.reportId)}>
+          <BarChart3 size={13} />查看报告
+        </button>
+      </div>
+    </div>
+
+    {(profile?.summary || memoryTags.length > 0) && <details className="agent-memory-strip">
+      <summary><Bot size={15} /><span>{profile?.summary || '已记录本轮求职上下文'}</span></summary>
+      <div>{memoryTags.map(tag => <span key={tag}>{tag}</span>)}</div>
+    </details>}
+
+    <div className="agent-chat-log single" ref={chatRef}>
+      {!displayedMessages.length && <article className="agent-bubble assistant">
+        <div className="agent-avatar"><Bot size={15} /></div>
+        <div><div className="message-role">SkillPilot</div>
+          <p>直接告诉我你想完成什么。我会先识别意图，再判断是否缺少简历、岗位或报告；需要资料时会在这里给出上传或选择卡片。</p>
+        </div>
+      </article>}
+      {displayedMessages.map(message => <article key={message.messageId} className={`agent-bubble ${agentMessageClass(message)}`}>
+        {message.role !== 'USER' && <div className="agent-avatar"><Bot size={15} /></div>}
+        <div>
+        <div className="message-role">{agentMessageRoleLabel(message)}</div>
+        {message.messageType === 'RESOURCE_CARD'
+          ? <AgentResourceCard message={message} resumes={resumes} jobs={jobs} resumeId={resumeId} jobId={jobId}
+              setResumeId={setResumeId} setJobId={setJobId} resumeFile={resumeFile} jdFile={jdFile}
+              setResumeFile={setResumeFile} setJdFile={setJdFile} resumeTitle={resumeTitle} setResumeTitle={setResumeTitle}
+              company={company} setCompany={setCompany} position={position} setPosition={setPosition}
+              busy={busy} importResume={importResume} importJob={importJob} />
+          : message.messageType === 'REPORT_READY'
+            ? <ReportChatCard message={message} report={latestReport || null} onOpenReport={onOpenReport} />
+            : message.messageType === 'WORKFLOW_STATUS' || message.messageType === 'PROCESS' || message.messageType === 'TOOL_STATUS'
+              ? <AgentStatusMessage message={message} />
+              : <p>{message.content}</p>}
+        </div>
+      </article>)}
+      {busy === 'planning' && <article className="agent-bubble assistant agent-streaming">
+        <div className="agent-avatar"><Bot size={15} /></div>
+        <div>
+          <div className="message-role">SkillPilot</div>
+          {streamText ? <p>{streamText}<span className="stream-cursor" /></p> : <div className="thinking"><span /><span /><span /><small>{agentState || '正在处理'}</small></div>}
+        </div>
+      </article>}
+      {activeTask && <article className="agent-bubble status-event">
+        <div className="agent-avatar"><Bot size={15} /></div>
+        <AgentStatusEvent task={activeTask} steps={steps} report={latestReport || null} onOpenReport={onOpenReport} onRetry={() => void retryActiveTask()} />
+      </article>}
+    </div>
+
+    <form className="agent-chat-input single" onSubmit={start}>
+      <div className="intent-suggestions">
+        {suggestedPrompts.map(item =>
+          <button key={item} type="button" onClick={() => void submitGoal(item)} disabled={Boolean(busy)}>{item}</button>
+        )}
+      </div>
+      <div className="composer-row">
+        <AgentAttachmentMenu resumes={resumes} jobs={jobs} resumeId={resumeId} jobId={jobId}
+          setResumeId={setResumeId} setJobId={setJobId} resumeFile={resumeFile} jdFile={jdFile}
+          setResumeFile={setResumeFile} setJdFile={setJdFile} resumeTitle={resumeTitle} setResumeTitle={setResumeTitle}
+          company={company} setCompany={setCompany} position={position} setPosition={setPosition}
+          busy={busy} importResume={importResume} importJob={importJob} />
+        <textarea value={goal} onChange={event => setGoal(event.target.value)} placeholder="说说你想让我做什么，例如：帮我优化这份简历，或者基于报告生成面试题。" maxLength={4000} />
+        <button className="primary send-button" disabled={!goal.trim() || Boolean(busy)} title={busy === 'task' || busy === 'planning' ? '处理中' : '发送'}>
+          <Send size={18} />
+        </button>
+      </div>
+    </form>
+
+    {error && <div className="alert"><CircleAlert size={16} />{error}</div>}
+    {taskError && <div className="alert"><CircleAlert size={16} />{taskError}</div>}
+  </section>
+}
+
+function AgentStatusMessage({ message }: { message: AgentMessage }) {
+  const status = typeof message.metadata?.status === 'string' ? message.metadata.status : ''
+  const running = status === 'RUNNING'
+  const failed = status === 'FAILED'
+  return <div className={`agent-status-line ${running ? 'running' : failed ? 'failed' : 'done'}`}>
+    <span>{running ? <Clock3 size={13} /> : failed ? <X size={13} /> : <Check size={13} />}</span>
+    <p>{message.content}</p>
+  </div>
+}
+
+function ReportChatCard({ message, report, onOpenReport }: {
+  message: AgentMessage; report: ReportSummary | null; onOpenReport: (id: number) => void
+}) {
+  return <div className="report-chat-card">
+    <div><Check size={16} /><span><strong>报告已生成</strong><small>{report ? `${report.position} · v${report.version}` : message.content}</small></span></div>
+    <button type="button" className="secondary" disabled={!report} onClick={() => report && onOpenReport(report.reportId)}>
+      <FileText size={14} />打开报告
+    </button>
+  </div>
+}
+
+function AgentStatusEvent({ task, steps, report, onOpenReport, onRetry }: {
+  task: CareerTask; steps: UserTaskStep[]; report: ReportSummary | null; onOpenReport: (id: number) => void; onRetry: () => void
+}) {
+  const running = !['SUCCESS', 'FAILED'].includes(task.status)
+  const failed = task.status === 'FAILED'
+  const currentStep = steps.find(step => step.status === 'RUNNING') || steps[steps.length - 1]
+  const completedCount = steps.filter(step => step.status === 'SUCCESS').length
+  const label = failed
+    ? `执行失败：${currentStep?.title || statusLabel[task.status] || '任务未完成'}`
+    : task.status === 'SUCCESS'
+      ? `已完成职业分析，共执行 ${Math.max(completedCount, steps.length)} 个步骤`
+      : currentStep
+        ? `正在${currentStep.title}`
+        : '正在启动分析任务'
+  const summary = failed
+    ? task.errorMessage || currentStep?.summary || '当前任务未能完成，可以重试。'
+    : task.status === 'SUCCESS'
+      ? '分析结果已经归档到报告页，也可以继续在对话里追问。'
+      : currentStep?.summary || '我正在读取资料并准备执行下一步。'
+
+  return <div className={`agent-status-event ${running ? 'running' : failed ? 'failed' : 'done'}`}>
+    <div className="status-event-main">
+      <span className="status-dot">{running ? <Clock3 size={14} /> : failed ? <X size={14} /> : <Check size={14} />}</span>
+      <div><strong>{label}</strong><p>{summary}</p></div>
+      <b>{task.progress}%</b>
+    </div>
+    {task.status === 'SUCCESS' && <div className="status-event-actions">
+      <button type="button" className="secondary" disabled={!report} onClick={() => report && onOpenReport(report.reportId)}>
+        <FileText size={14} />{report ? '打开报告' : '报告整理中'}
+      </button>
+    </div>}
+    {failed && <div className="status-event-actions">
+      <button type="button" className="secondary" onClick={onRetry}><RefreshCw size={14} />重试</button>
+    </div>}
+    {steps.length > 0 && <details className="status-event-details">
+      <summary>{running ? '查看当前步骤' : '查看执行步骤'}</summary>
+      <div>{steps.map((step, index) => <AgentStep key={`${step.step}-${index}`} step={step} last={index === steps.length - 1} />)}</div>
+    </details>}
+  </div>
+}
+
+function AgentAttachmentMenu({
+  resumes, jobs, resumeId, jobId, setResumeId, setJobId, resumeFile, jdFile, setResumeFile, setJdFile,
+  resumeTitle, setResumeTitle, company, setCompany, position, setPosition, busy, importResume, importJob
+}: {
+  resumes: Resume[]; jobs: Job[]; resumeId: number; jobId: number;
+  setResumeId: (value: number) => void; setJobId: (value: number) => void;
+  resumeFile: File | null; jdFile: File | null; setResumeFile: (file: File | null) => void; setJdFile: (file: File | null) => void;
+  resumeTitle: string; setResumeTitle: (value: string) => void; company: string; setCompany: (value: string) => void;
+  position: string; setPosition: (value: string) => void; busy: string; importResume: () => Promise<void>; importJob: () => Promise<void>
+}) {
+  return <details className="agent-attachment-menu">
+    <summary title="添加资料"><Plus size={18} /></summary>
+    <div>
+      <section>
+        <strong>简历</strong>
+        <select value={resumeId} onChange={event => setResumeId(Number(event.target.value))}><option value={0}>选择已有简历</option>{resumes.map(item => <option key={item.resumeId} value={item.resumeId}>{item.title}</option>)}</select>
+        <Field label="导入简历名称"><input value={resumeTitle} onChange={event => setResumeTitle(event.target.value)} placeholder="例如：后端工程师简历" /></Field>
+        <FilePicker file={resumeFile} onChange={setResumeFile} accept=".pdf,.doc,.docx,.txt,.md" />
+        <button type="button" className="secondary" disabled={!resumeFile || !resumeTitle || Boolean(busy)} onClick={() => void importResume()}>
+          {busy === 'resume' ? '处理中...' : '导入简历'}<Upload size={14} />
+        </button>
+      </section>
+      <section>
+        <strong>岗位 JD</strong>
+        <select value={jobId} onChange={event => setJobId(Number(event.target.value))}><option value={0}>选择已有岗位</option>{jobs.map(item => <option key={item.jobId} value={item.jobId}>{item.company ? `${item.company} · ` : ''}{item.position}</option>)}</select>
+        <div className="form-row"><Field label="公司"><input value={company} onChange={event => setCompany(event.target.value)} /></Field><Field label="职位"><input value={position} onChange={event => setPosition(event.target.value)} /></Field></div>
+        <FilePicker file={jdFile} onChange={setJdFile} accept=".pdf,.doc,.docx,.txt,.md" />
+        <button type="button" className="secondary" disabled={!jdFile || !position || Boolean(busy)} onClick={() => void importJob()}>
+          {busy === 'job' ? '处理中...' : '导入岗位'}<Upload size={14} />
+        </button>
+      </section>
+    </div>
+  </details>
+}
+
+function agentMessageClass(message: AgentMessage) {
+  if (message.role === 'USER') return 'user'
+  if (message.messageType === 'PROCESS' || message.messageType === 'TOOL_STATUS' || message.messageType === 'WORKFLOW_STATUS') return 'process'
+  if (message.messageType === 'RESOURCE_CARD') return 'resource'
+  return 'assistant'
+}
+
+function agentMessageRoleLabel(message: AgentMessage) {
+  if (message.role === 'USER') return '我'
+  const labels: Record<AgentMessageType, string> = {
+    TEXT: 'SkillPilot',
+    PROCESS: '执行状态',
+    TOOL_STATUS: '资料状态',
+    RESOURCE_CARD: '资料补齐',
+    WORKFLOW_STATUS: '执行状态',
+    REPORT_READY: '报告'
+  }
+  return labels[message.messageType]
+}
+
+function missingResources(message: AgentMessage): AgentRequiredResource[] {
+  const value = message.metadata?.missingResources
+  return Array.isArray(value) ? value.filter((item): item is AgentRequiredResource => item === 'RESUME' || item === 'JOB' || item === 'REPORT') : []
+}
+
+function AgentResourceCard({
+  message, resumes, jobs, resumeId, jobId, setResumeId, setJobId, resumeFile, jdFile, setResumeFile, setJdFile,
+  resumeTitle, setResumeTitle, company, setCompany, position, setPosition, busy, importResume, importJob
+}: {
+  message: AgentMessage; resumes: Resume[]; jobs: Job[]; resumeId: number; jobId: number;
+  setResumeId: (value: number) => void; setJobId: (value: number) => void;
+  resumeFile: File | null; jdFile: File | null; setResumeFile: (file: File | null) => void; setJdFile: (file: File | null) => void;
+  resumeTitle: string; setResumeTitle: (value: string) => void; company: string; setCompany: (value: string) => void;
+  position: string; setPosition: (value: string) => void; busy: string; importResume: () => Promise<void>; importJob: () => Promise<void>
+}) {
+  const missing = missingResources(message)
+  return <div className="agent-resource-message">
+    <p>{message.content}</p>
+    <div className="agent-resource-grid compact">
+      {missing.includes('RESUME') && <section className="plain-section agent-resource-card"><div className="step-title"><span>01</span><div><h2>简历</h2><p>{resumes.length} 份可用</p></div></div>
+        <select value={resumeId} onChange={e => setResumeId(Number(e.target.value))}><option value={0}>选择已有简历</option>{resumes.map(r => <option key={r.resumeId} value={r.resumeId}>{r.title}</option>)}</select>
+        <div className="separator"><span>或导入新简历</span></div>
+        <Field label="简历名称"><input value={resumeTitle} onChange={e => setResumeTitle(e.target.value)} placeholder="例如：后端工程师简历" /></Field>
+        <FilePicker file={resumeFile} onChange={setResumeFile} accept=".pdf,.doc,.docx,.txt,.md" />
+        <button type="button" className="secondary" onClick={() => void importResume()} disabled={!resumeFile || !resumeTitle || Boolean(busy)}>{busy === 'resume' ? '处理中...' : '导入简历'}<Upload size={16} /></button>
+      </section>}
+      {missing.includes('JOB') && <section className="plain-section agent-resource-card"><div className="step-title"><span>02</span><div><h2>岗位</h2><p>{jobs.length} 个可用</p></div></div>
+        <select value={jobId} onChange={e => setJobId(Number(e.target.value))}><option value={0}>选择已有岗位</option>{jobs.map(j => <option key={j.jobId} value={j.jobId}>{j.company ? `${j.company} · ` : ''}{j.position}</option>)}</select>
+        <div className="separator"><span>或导入新 JD</span></div>
+        <div className="form-row"><Field label="公司"><input value={company} onChange={e => setCompany(e.target.value)} /></Field><Field label="职位"><input value={position} onChange={e => setPosition(e.target.value)} /></Field></div>
+        <FilePicker file={jdFile} onChange={setJdFile} accept=".pdf,.doc,.docx,.txt,.md" />
+        <button type="button" className="secondary" onClick={() => void importJob()} disabled={!jdFile || !position || Boolean(busy)}>{busy === 'job' ? '处理中...' : '导入岗位'}<Upload size={16} /></button>
+      </section>}
+      {missing.includes('REPORT') && <section className="plain-section agent-resource-card"><div className="step-title"><span>03</span><div><h2>报告</h2><p>需要先生成或选择报告</p></div></div><p className="muted-copy">当前没有可用报告。你可以先让我基于简历和岗位完成一次职业分析。</p></section>}
+    </div>
   </div>
 }
 
@@ -625,7 +1093,8 @@ function SectionTitle({ title, action }: { title: string; action?: string }) { r
 function Empty({ icon, text }: { icon: ReactNode; text: string }) { return <div className="empty">{icon}<span>{text}</span></div> }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="field"><span>{label}</span>{children}</label> }
 function FilePicker({ file, onChange, accept }: { file: File | null; onChange: (file: File | null) => void; accept: string }) { return <label className="file-picker"><input type="file" accept={accept} onChange={e => onChange(e.target.files?.[0] || null)} /><Upload size={20} /><div><strong>{file?.name || '选择文件'}</strong><span>{file ? `${(file.size / 1024).toFixed(0)} KB` : 'PDF、Word、TXT 或 Markdown'}</span></div></label> }
-function NavButton({ active, icon, label, badge, onClick }: { active: boolean; icon: ReactNode; label: string; badge?: number; onClick: () => void }) { return <button className={active ? 'nav active' : 'nav'} onClick={onClick}>{icon}<span>{label}</span>{Boolean(badge) && <b>{badge}</b>}</button> }
+const hiddenIntentViews = [TutorWorkspace, InterviewWorkspace, Overview, TaskList, TaskDetail, ReportList, ReportDetailView] as const
+void hiddenIntentViews
 function formatDate(value?: string) { if (!value) return ''; return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
 
 export default App

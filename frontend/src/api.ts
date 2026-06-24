@@ -3,7 +3,7 @@ export type PageData<T> = { items: T[]; page: number; pageSize: number; totalIte
 export type Resume = { resumeId: number; documentId: number; title: string; latestAnalysisVersion: number; createdAt: string }
 export type Job = { jobId: number; documentId?: number; company?: string; position: string; jdText: string; createdAt: string }
 export type CareerTask = {
-  taskId: number; traceId: string; status: string; progress: number; resumeId: number; jobId: number;
+  taskId: number; traceId: string; status: string; progress: number; resumeId: number; jobId: number | null;
   enabledSteps: string[]; errorMessage?: string; createdAt: string; updatedAt: string; startedAt?: string; finishedAt?: string
 }
 export type TaskLog = {
@@ -113,6 +113,61 @@ export type TaskEventSnapshot = {
   task: CareerTask; steps: UserTaskStep[]; technicalDetails: TechnicalDetail[];
   resumedAfterEventId?: string; synchronizedAt: string
 }
+export type CareerIntentResponse = {
+  intent: 'CAREER_ANALYSIS' | 'RESUME_REVIEW' | 'JOB_MATCH' | 'INTERVIEW_PREP' | 'MOCK_INTERVIEW' | 'LEARNING_PLAN' | 'REPORT_QA' | 'GENERAL_CAREER_QA';
+  label: string; summary: string; confidence: number; needsWorkflow: boolean;
+  requiredResources: ('RESUME' | 'JOB' | 'REPORT')[]; missingResources: ('RESUME' | 'JOB' | 'REPORT')[];
+  nextAction: 'ASK_USER' | 'START_WORKFLOW' | 'GET_REPORT' | 'START_MOCK_INTERVIEW' | 'GENERATE_LEARNING_PLAN' | 'ANSWER_DIRECTLY';
+  reason: string
+}
+export type AgentRequiredResource = 'RESUME' | 'JOB' | 'REPORT'
+export type AgentResourceRef = { type: AgentRequiredResource; id: number; title: string }
+export type CareerAgentProfile = {
+  targetRoles: string[];
+  careerStages: string[];
+  weaknessTags: string[];
+  preferenceTags: string[];
+  summary: string;
+  suggestedPrompts: string[]
+}
+export type AgentMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM'
+export type AgentMessageType = 'TEXT' | 'PROCESS' | 'TOOL_STATUS' | 'RESOURCE_CARD' | 'WORKFLOW_STATUS' | 'REPORT_READY'
+export type AgentMessage = {
+  messageId: number;
+  role: AgentMessageRole;
+  messageType: AgentMessageType;
+  content: string;
+  taskId?: number;
+  reportId?: number;
+  metadata: Record<string, unknown>;
+  createdAt: string
+}
+export type AgentConversation = {
+  conversationId?: number;
+  title: string;
+  profile: CareerAgentProfile;
+  messages: AgentMessage[];
+  createdAt?: string;
+  updatedAt?: string
+}
+export type CareerAgentPlanResponse = {
+  intent: CareerIntentResponse;
+  selectedResources: AgentResourceRef[];
+  missingResources: AgentRequiredResource[];
+  nextAction: CareerIntentResponse['nextAction'];
+  canStartWorkflow: boolean;
+  workflowSteps: string[];
+  resumeId?: number;
+  jobId?: number;
+  reportId?: number;
+  task?: CareerTask;
+  learningPlanId?: number;
+  interviewSessionId?: number;
+  profile: CareerAgentProfile;
+  suggestedPrompts: string[];
+  messages: AgentMessage[];
+  assistantMessage: string
+}
 
 type Envelope<T> = { success: boolean; data: T; error?: { code: string; message: string }; traceId?: string }
 
@@ -129,10 +184,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const response = await fetch(path, { ...init, headers })
-  const payload = await response.json() as Envelope<T>
-  if (!response.ok || !payload.success) {
+  const raw = await response.text()
+  let payload: Envelope<T> | null = null
+  if (raw.trim()) {
+    try {
+      payload = JSON.parse(raw) as Envelope<T>
+    } catch {
+      if (response.status === 401) session.clear()
+      throw new Error(response.ok ? '服务返回了无法解析的响应' : `请求失败 (${response.status})`)
+    }
+  }
+  if (!response.ok || !payload?.success) {
     if (response.status === 401) session.clear()
-    throw new Error(payload.error?.message || '请求失败，请稍后再试')
+    throw new Error(payload?.error?.message || (response.ok ? '请求失败，请稍后再试' : `请求失败 (${response.status})`))
   }
   return payload.data
 }
@@ -272,6 +336,53 @@ export const api = {
   createTask: (resumeId: number, jobId: number) => request<CareerTask>('/api/career-tasks', {
     method: 'POST', body: JSON.stringify({ resumeId, jobId })
   }),
+  classifyCareerIntent: (body: { message: string; hasResume: boolean; hasJob: boolean; hasReport: boolean }) =>
+    request<CareerIntentResponse>('/api/career-agent/intent', { method: 'POST', body: JSON.stringify(body) }),
+  planCareerAgent: (body: { message: string; resumeId?: number | null; jobId?: number | null; reportId?: number | null; executeWorkflow: boolean }) =>
+    request<CareerAgentPlanResponse>('/api/career-agent/plan', { method: 'POST', body: JSON.stringify(body) }),
+  streamCareerAgentPlan: async (
+    body: { message: string; resumeId?: number | null; jobId?: number | null; reportId?: number | null; executeWorkflow: boolean },
+    onEvent: (event: string, data: Record<string, unknown>) => void
+  ) => {
+    const response = await fetch('/api/career-agent/plan/stream', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.get() || ''}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    if (!response.ok || !response.body) {
+      if (response.status === 401) session.clear()
+      throw new Error('Agent 消息流连接失败')
+    }
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+    let completed: CareerAgentPlanResponse | null = null
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n'); buffer = frames.pop() || ''
+      for (const frame of frames) {
+        let event = 'message'; let data = ''
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          if (line.startsWith('data:')) data += line.slice(5).trim()
+        }
+        if (data) {
+          const parsed = JSON.parse(data) as Record<string, unknown>
+          onEvent(event, parsed)
+          if (event === 'AGENT_COMPLETED') completed = parsed as unknown as CareerAgentPlanResponse
+          if (event === 'AGENT_FAILED') throw new Error(String(parsed.message || 'Agent 处理失败，请重试'))
+        }
+      }
+    }
+    if (!completed) throw new Error('Agent 响应未完成，请重试')
+    return completed
+  },
+  careerAgentProfile: () => request<CareerAgentProfile>('/api/career-agent/profile'),
+  careerAgentConversation: () => request<AgentConversation>('/api/career-agent/conversation'),
+  appendCareerAgentMessage: (body: { role: AgentMessageRole; messageType: AgentMessageType; content: string; taskId?: number; reportId?: number; metadata?: Record<string, unknown> }) =>
+    request<AgentMessage>('/api/career-agent/messages', { method: 'POST', body: JSON.stringify(body) }),
   upload: async (file: File, fileType: 'RESUME' | 'JD' | 'NOTE' | 'PROJECT_DOC') => {
     const form = new FormData(); form.append('file', file); form.append('fileType', fileType)
     return request<{ fileId: number }>('/api/files/upload', { method: 'POST', body: form })
