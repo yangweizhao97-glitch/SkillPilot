@@ -20,13 +20,13 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_DB: career_agent
+          POSTGRES_DB: career_agent_test
           POSTGRES_USER: career_agent
           POSTGRES_PASSWORD: career_agent_ci_password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U career_agent -d career_agent"
+          --health-cmd "pg_isready -U career_agent -d career_agent_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
@@ -40,7 +40,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: jdbc:postgresql://localhost:5432/career_agent
+      DATABASE_URL: jdbc:postgresql://localhost:5432/career_agent_test
       POSTGRES_USER: career_agent
       POSTGRES_PASSWORD: career_agent_ci_password
       REDIS_HOST: localhost

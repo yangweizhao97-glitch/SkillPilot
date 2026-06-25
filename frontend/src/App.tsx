@@ -470,18 +470,9 @@ function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const chatRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!resumeId && resumes[0]?.resumeId) setResumeId(resumes[0].resumeId)
-  }, [resumes, resumeId])
-  useEffect(() => {
-    if (!jobId && jobs[0]?.jobId) setJobId(jobs[0].jobId)
-  }, [jobs, jobId])
-  useEffect(() => {
-    if (!activeTaskId) return
-    const matched = reports.find(item => item.taskId === activeTaskId)?.reportId || null
-    if (matched) setReportId(matched)
-  }, [reports, activeTaskId])
+  const localMessageSequence = useRef(-1)
+  const selectedResumeId = resumeId || resumes[0]?.resumeId || 0
+  const selectedJobId = jobId || jobs[0]?.jobId || 0
   useEffect(() => {
     api.careerAgentProfile()
       .then(next => {
@@ -622,7 +613,8 @@ function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
   async function submitGoal(message: string) {
     setBusy('planning'); setError(''); setTaskError('')
     const latestReportId = reports[0]?.reportId
-    const localMessageId = -Date.now()
+    const localMessageId = localMessageSequence.current
+    localMessageSequence.current -= 1
     const optimisticMessage: AgentMessage = {
       messageId: localMessageId,
       role: 'USER',
@@ -638,8 +630,8 @@ function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
     try {
       const plan = await api.streamCareerAgentPlan({
         message,
-        resumeId: resumeId || null,
-        jobId: jobId || null,
+        resumeId: selectedResumeId || null,
+        jobId: selectedJobId || null,
         reportId: latestReportId || null,
         executeWorkflow: true
       }, (event, data) => {
@@ -681,8 +673,8 @@ function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
     await submitGoal(message)
   }
 
-  const activeResume = resumes.find(item => item.resumeId === resumeId)
-  const activeJob = jobs.find(item => item.jobId === jobId)
+  const activeResume = resumes.find(item => item.resumeId === selectedResumeId)
+  const activeJob = jobs.find(item => item.jobId === selectedJobId)
   const memoryTags = [
     ...(profile?.targetRoles || []),
     ...(profile?.careerStages || []),
@@ -742,7 +734,7 @@ function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
         <div>
         <div className="message-role">{agentMessageRoleLabel(message)}</div>
         {message.messageType === 'RESOURCE_CARD'
-          ? <AgentResourceCard message={message} resumes={resumes} jobs={jobs} resumeId={resumeId} jobId={jobId}
+          ? <AgentResourceCard message={message} resumes={resumes} jobs={jobs} resumeId={selectedResumeId} jobId={selectedJobId}
               setResumeId={setResumeId} setJobId={setJobId} resumeFile={resumeFile} jdFile={jdFile}
               setResumeFile={setResumeFile} setJdFile={setJdFile} resumeTitle={resumeTitle} setResumeTitle={setResumeTitle}
               company={company} setCompany={setCompany} position={position} setPosition={setPosition}
@@ -774,7 +766,7 @@ function Prepare({ resumes, jobs, reports, onResourcesChanged, onOpenReport }: {
         )}
       </div>
       <div className="composer-row">
-        <AgentAttachmentMenu resumes={resumes} jobs={jobs} resumeId={resumeId} jobId={jobId}
+        <AgentAttachmentMenu resumes={resumes} jobs={jobs} resumeId={selectedResumeId} jobId={selectedJobId}
           setResumeId={setResumeId} setJobId={setJobId} resumeFile={resumeFile} jdFile={jdFile}
           setResumeFile={setResumeFile} setJdFile={setJdFile} resumeTitle={resumeTitle} setResumeTitle={setResumeTitle}
           company={company} setCompany={setCompany} position={position} setPosition={setPosition}
