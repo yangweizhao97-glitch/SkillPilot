@@ -1,169 +1,154 @@
 # SkillPilot / CareerAgent
 
-AI-powered career preparation workspace built with Spring Boot, React, PostgreSQL + pgvector, Redis, and structured Agent workflows.
+AI-powered career preparation workspace built with Spring Boot, React, PostgreSQL + pgvector, Redis, and controlled Agent workflows.
 
-![SkillPilot career preparation workflow](docs/assets/skillpilot-hero.png)
+![SkillPilot Career Agent workflow](assets/skillpilot-hero.png)
 
-## Overview
+## What it does
 
-SkillPilot is an AI career preparation platform for resume-driven job search workflows. It lets users upload resumes and job descriptions, parse documents into a private knowledge base, run structured AI agents, and generate a complete career preparation report.
+SkillPilot is a resume-driven career preparation platform. A user can upload a resume, job description, notes, or project documents, then let the system build a private knowledge base and run a structured Career Agent workflow.
 
-The system is not a simple chatbot. It is built around a full workflow:
+The current product is closer to an Agent workspace than a simple chatbot:
 
-- Upload and parse resumes, job descriptions, notes, and project documents.
-- Split documents into searchable chunks and create embeddings.
-- Retrieve user-owned context from PostgreSQL + pgvector.
-- Run career-analysis agents for job matching, resume analysis, interview questions, and final report aggregation.
-- Stream task progress to the frontend with Server-Sent Events.
-- Export final reports as PDF.
-- Support interactive interview practice, answer scoring, review summaries, and tutor memory.
+- The frontend provides a conversational Career Agent entry point.
+- The backend identifies intent and missing resources before starting long-running tasks.
+- Resume, JD, project notes, and interview knowledge are parsed, chunked, embedded, and retrieved.
+- Professional Agents produce concrete business artifacts: job match, resume analysis, interview questions, final report, and learning plan.
+- Workflow execution follows Plan → Execute → Verify → Route, so each step can be checked, retried, skipped, or failed explicitly.
+- Results can be streamed to the user, reviewed in the UI, and exported as PDF.
 
-## Highlights
-
-- **Resume and JD import**: Apache Tika detects and parses PDF, Word, Markdown, and text files.
-- **Private RAG knowledge base**: document chunks are embedded and stored in PostgreSQL with pgvector.
-- **Structured AI agents**: job matching, resume analysis, interview questions, learning plan, and report generation are separated into auditable stages.
-- **Real-time task progress**: career tasks stream user-friendly progress through SSE.
-- **Schema-safe model output**: important LLM responses are validated with JSON Schema and repaired or degraded when needed.
-- **Interactive interview practice**: users answer questions, receive follow-up questions, scoring, and improvement suggestions.
-- **Tutor memory**: long-running AI tutor sessions keep compact memory while avoiding unbounded prompt growth.
-- **PDF report export**: final reports are rendered with PDFBox, including CJK font support, pagination, and safe local storage.
-- **Security boundaries**: user-owned resources, upload validation, JWT auth, prompt-injection checks, tool-call auditing, and path traversal protection.
-
-## Product Flow
+## Current capability map
 
 ```mermaid
 flowchart LR
-    A[Resume / JD Upload] --> B[Apache Tika Parsing]
-    B --> C[Document Chunks]
-    C --> D[Embedding]
-    D --> E[(PostgreSQL + pgvector)]
-    E --> F[Agent Workflow]
-    F --> G[Job Matching]
-    F --> H[Resume Analysis]
-    F --> I[Interview Questions]
-    G --> J[Final Report]
-    H --> J
-    I --> J
-    J --> K[PDF Export]
-    J --> L[Learning Plan]
-    I --> M[Interactive Interview]
-    M --> N[Review + Tutor Memory]
+    U[User message] --> C[Career Agent conversation]
+    C --> R[Resource resolution]
+    R --> T[Async career task]
+    T --> P[Plan]
+    P --> E[Execute Agent]
+    E --> V[Verify artifact]
+    V --> O{Route}
+    O -->|continue| E
+    O -->|retry| E
+    O -->|finish| A[Artifacts]
+    A --> FR[Final report]
+    A --> IQ[Interview practice]
+    A --> LP[Learning plan]
+    FR --> PDF[PDF export]
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    UI[React + TypeScript + Vite] --> API[Spring Boot REST API]
-    UI --> SSE[SSE Task Event Stream]
+    UI[React 19 + TypeScript + Vite] --> API[Spring Boot REST API]
+    UI --> SSE[SSE streams]
     API --> AUTH[Spring Security + JWT]
-    API --> FILES[Local Upload Storage]
+    API --> FILES[Local upload storage]
     API --> DB[(PostgreSQL 16 + pgvector)]
     API --> REDIS[(Redis 7)]
-    API --> AGENTS[Agent Workflow Layer]
-    AGENTS --> TOOLS[Audited Tool Registry]
-    AGENTS --> LLM[DashScope-compatible Chat API]
-    AGENTS --> SCHEMA[JSON Schema Validation]
-    API --> PDF[PDFBox Report Renderer]
+    API --> RAG[Private / public knowledge retrieval]
+    API --> WF[Agent Workflow Layer]
+    WF --> TOOLS[Tool Registry + audited execution]
+    WF --> VERIFIER[Business Verifiers]
+    WF --> LLM[DashScope-compatible chat API]
+    WF --> SCHEMA[JSON Schema validation]
+    API --> PDF[PDFBox report renderer]
+    API -. optional .-> LG[LangGraph service]
+    TOOLS -. optional .-> MCP[MCP Streamable HTTP adapter]
 ```
 
-## Tech Stack
+## Highlights
+
+- **Conversational Career Agent**: `/api/career-agent` supports intent recognition, resource cards, plan preview, streamed planning, and message history.
+- **Private RAG knowledge base**: Apache Tika parses user files, the backend chunks content, and PostgreSQL + pgvector stores searchable knowledge.
+- **Controlled tool calling**: Agents do not call arbitrary functions. Tools are registered, permission-scoped by Agent name, validated, logged, and protected by ownership checks.
+- **Workflow with quality gates**: task execution is not “LLM says done”. Each business artifact is verified before the router decides whether to continue, retry, skip, replan, or fail.
+- **Async + SSE user experience**: long-running career tasks are created after database commit, executed asynchronously, and streamed to the frontend through Server-Sent Events.
+- **Interview and tutor modules**: users can practice interview answers, receive scoring/follow-up, review sessions, and continue with tutor memory.
+- **PDF export**: final reports are rendered with PDFBox, safe local paths, atomic writes, pagination, and CJK font support.
+- **CI-friendly design**: tests mock external model calls; GitHub Actions validates backend, frontend, dependency audit, and repository safety.
+
+## Agent workflow in this project
+
+The default Spring workflow runs these business steps:
+
+1. **Job Match Agent** creates a job-match artifact.
+2. **Resume Analysis Agent** creates resume strengths, gaps, and optimization suggestions.
+3. **Interview Question Agent** creates targeted interview questions.
+4. **Final Report Agent** aggregates previous artifacts into a final report.
+
+The important design choice is that Agents are divided by business artifact, not by technical action. That makes ownership clearer: one Agent is responsible for one kind of output, while shared capabilities such as retrieval, file access, and report lookup are exposed through Tools.
+
+The workflow runner uses four phases:
+
+| Phase | Meaning in this project |
+| --- | --- |
+| Plan | Build an executable list of workflow steps and mark whether each step is required. |
+| Execute | Run the current professional Agent and persist its artifact. |
+| Verify | Check whether the artifact satisfies business quality signals. |
+| Route | Decide whether to continue, retry, skip, replan, or fail. |
+
+## Tool Registry
+
+Registered tools include:
+
+| Tool | Purpose |
+| --- | --- |
+| `getResume` | Read a user-owned resume resource. |
+| `getJobDescription` | Read a user-owned job description resource. |
+| `searchUserKnowledgeBase` | Retrieve private resume, JD, project, and note chunks. |
+| `searchPublicInterviewKnowledge` | Retrieve curated public interview knowledge. |
+| `getFinalReport` | Read final report context for learning-plan generation. |
+| `CallMcpTool` | Optional MCP bridge, disabled by default. |
+
+Tool execution is guarded by Agent allowlists, input validation, user ownership checks, audit logs, and prompt-injection/sensitive-field boundaries.
+
+## Verifier depth
+
+The current verifiers combine structural checks and business signals:
+
+- Job match must produce an artifact, numeric score, and summary.
+- Resume analysis must produce an artifact, summary, and actionable suggestions or next actions.
+- Interview questions must meet minimum count, type diversity, difficulty diversity, expected-point coverage, and evidence coverage.
+- Final report verification currently checks artifact existence/status and relies on upstream verified artifacts for most quality guarantees.
+
+This means the system is honest about quality: JSON Schema ensures output shape, prompts define expected fields and boundaries, and Verifiers judge whether the artifact is useful enough to move forward. The final report verifier is intentionally lighter today and is a good future improvement point.
+
+## Tech stack
 
 | Layer | Technology |
 | --- | --- |
 | Backend | Java 21, Spring Boot 3.5, Spring Security, JPA, Flyway |
-| Database | PostgreSQL 16, pgvector |
-| Cache / stream support | Redis 7 |
-| Frontend | React 19, TypeScript, Vite |
-| AI | DashScope-compatible chat API, structured prompts, JSON Schema |
-| Document parsing | Apache Tika, PDFBox through Tika |
+| Database | PostgreSQL 16 with pgvector |
+| Cache / async support | Redis 7 |
+| Frontend | React 19, TypeScript 6, Vite 8, Vitest |
+| AI integration | DashScope-compatible chat API, structured prompts, JSON Schema |
+| Retrieval | PostgreSQL vector search, keyword search, hybrid retrieval |
+| Document parsing | Apache Tika |
 | PDF export | Apache PDFBox + FontBox |
-| Testing | JUnit, Spring Boot Test, Vitest, TypeScript build |
+| Optional orchestration | LangGraph service, Spring fallback |
+| Optional tools | MCP Streamable HTTP adapter, disabled by default |
 
-## Core Modules
-
-### File Processing
-
-Users upload files through `/api/files/upload` with a business type such as `RESUME`, `JD`, `NOTE`, or `PROJECT_DOC`.
-
-The backend:
-
-- detects physical file type with Apache Tika,
-- rejects unsupported MIME types,
-- stores files under a user-scoped directory,
-- parses content with Tika,
-- normalizes text,
-- stores parsed content as a `Document`,
-- chunks and embeds it for retrieval.
-
-### RAG Knowledge Base
-
-SkillPilot stores document chunks with source type, title, locator, content, token count, and embedding. Retrieval supports:
-
-- vector search,
-- keyword search,
-- hybrid search.
-
-Hybrid search is useful for resumes because technical keywords such as Spring Boot, Redis, PostgreSQL, and AI workflow should remain exact-match friendly while still allowing semantic retrieval.
-
-### Agent Workflow
-
-Career analysis runs as an asynchronous task instead of a blocking HTTP request.
-
-Default workflow:
-
-1. Read resume and job description.
-2. Retrieve related context from the private knowledge base.
-3. Run job matching.
-4. Run resume analysis.
-5. Generate interview questions.
-6. Aggregate the final report.
-7. Optionally generate a learning plan.
-
-Each stage writes execution logs and tool-call logs. The frontend maps technical logs into user-friendly progress steps.
-
-### Report and PDF Export
-
-Final reports aggregate:
-
-- job match score and reasoning,
-- strengths and gaps,
-- resume optimization suggestions,
-- targeted interview questions,
-- citations,
-- learning plan when available.
-
-PDF export uses Apache PDFBox directly. The renderer controls CJK fonts, wrapping, pagination, page footers, local export paths, and safe atomic writes.
-
-### Interview and Tutor
-
-The interview module supports:
-
-- session creation by resume and job,
-- question-by-question answers,
-- streamed response handling,
-- scoring and follow-up decisions,
-- session review,
-- memory summaries.
-
-The tutor module can bind a session to resume, job, interview question, evaluation, or learning plan. It retrieves relevant private and public context and keeps compact long-term memory for continued coaching.
+Note: the current embedding implementation is local hashing-based and deterministic for development/testability. `.env` exposes embedding model settings, but a remote embedding provider implementation is not yet wired as the default runtime path.
 
 ## Main APIs
 
 | Area | Endpoints |
 | --- | --- |
 | Auth | `/api/auth/register`, `/api/auth/login`, `/api/auth/me` |
-| Files | `/api/files`, `/api/files/{id}/process` |
-| Knowledge | `/api/documents/{id}/chunks`, `/api/documents/{id}/embeddings` |
+| Conversational Agent | `/api/career-agent/intent`, `/api/career-agent/plan`, `/api/career-agent/plan/stream`, `/api/career-agent/messages` |
+| Files | `/api/files/upload`, `/api/files/{fileId}/parse`, `/api/files/{fileId}/process` |
+| Knowledge | `/api/knowledge/search`, `/api/documents/{documentId}/chunks`, `/api/documents/{documentId}/embeddings` |
 | Resume / Job | `/api/resumes`, `/api/jobs` |
-| Career Tasks | `/api/career-tasks`, `/api/career-tasks/{id}/progress`, `/api/career-tasks/{id}/events` |
-| Reports | `/api/reports`, `/api/reports/{id}`, `/api/reports/{id}/pdf` |
+| Career Tasks | `/api/career-tasks`, `/api/career-tasks/{taskId}/progress`, `/api/career-tasks/{taskId}/events`, `/api/career-tasks/{taskId}/retry` |
+| Reports | `/api/reports`, `/api/reports/{reportId}`, `/api/reports/{reportId}/pdf` |
 | Learning Plans | `/api/learning-plans` |
-| Interview | `/api/interview/sessions`, `/api/interview/sessions/{id}/answers/stream` |
-| Tutor | `/api/tutor/sessions`, `/api/tutor/sessions/{id}/messages/stream` |
+| Interview | `/api/interview/questions`, `/api/interview/sessions`, `/api/interview/sessions/{sessionId}/answers/stream` |
+| Tutor | `/api/tutor/sessions`, `/api/tutor/sessions/{sessionId}/messages/stream` |
+| Public interview knowledge | `/api/interview-knowledge/search`, `/api/admin/interview-knowledge/sources` |
 
-## Quick Start
+## Quick start
 
 Requirements:
 
@@ -171,47 +156,13 @@ Requirements:
 - JDK 21 or newer
 - Node.js 22 or newer
 
-Create local environment:
+Recommended local startup:
 
 ```bash
-cp .env.example .env
+./start-dev.sh
 ```
 
-Set a real local JWT secret before starting the backend:
-
-```bash
-openssl rand -hex 32
-```
-
-Put the generated value into `.env`:
-
-```bash
-JWT_SECRET=<your-64-char-secret>
-```
-
-Start PostgreSQL and Redis:
-
-```bash
-docker compose up -d postgres redis
-```
-
-Start backend:
-
-```bash
-set -a
-source .env
-set +a
-
-JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw spring-boot:run
-```
-
-Start frontend in another terminal:
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
+The script checks Java/Node/Docker, creates `.env` from `.env.example` when needed, starts PostgreSQL and Redis, installs frontend dependencies when needed, and launches backend + frontend together.
 
 Open:
 
@@ -219,18 +170,32 @@ Open:
 http://localhost:5173
 ```
 
-Health check:
+Manual startup:
 
 ```bash
-curl http://localhost:8080/actuator/health
-docker compose ps
+cp .env.example .env
+docker compose up -d postgres redis
+
+set -a
+source .env
+set +a
+
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw spring-boot:run
 ```
 
-## AI Configuration
+In another terminal:
 
-The app can run tests without a real LLM key because integration tests mock external model calls.
+```bash
+cd frontend
+npm ci
+npm run dev
+```
 
-For real AI analysis, configure DashScope-compatible settings in `.env`:
+## AI configuration
+
+Tests and CI do not require a real model key because external model calls are mocked.
+
+For local AI analysis, configure:
 
 ```bash
 DASHSCOPE_API_KEY=<your-key>
@@ -239,36 +204,43 @@ CHAT_MODEL=qwen-flash
 
 Then restart the backend.
 
-## Environment Variables
+## Environment variables
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `DATABASE_URL` | PostgreSQL JDBC URL | `jdbc:postgresql://localhost:5432/career_agent` |
 | `POSTGRES_USER` | Database username | `career_agent` |
 | `POSTGRES_PASSWORD` | Database password | `career_agent_dev_password` |
-| `REDIS_HOST` | Redis host | `localhost` |
-| `REDIS_PORT` | Redis port | `6379` |
-| `JWT_SECRET` | JWT signing secret, at least 32 chars | Required for local run |
-| `DASHSCOPE_API_KEY` | Real AI model key | Empty |
+| `REDIS_HOST` / `REDIS_PORT` | Redis connection | `localhost:6379` |
+| `JWT_SECRET` | JWT signing secret, at least 32 chars | required for real local run |
+| `DASHSCOPE_API_KEY` | Real AI model key | empty |
 | `CHAT_MODEL` | Chat model | `qwen-flash` |
+| `EMBEDDING_MODEL` | Embedding model name config | `text-embedding-v4` |
+| `EMBEDDING_DIMENSION` | Embedding vector dimension | `1024` |
 | `UPLOAD_DIR` | Local upload storage | `./data/uploads` |
 | `PDF_EXPORT_DIR` | Local PDF export storage | `./data/exports` |
-| `WORKFLOW_ENGINE` | Workflow engine: `spring` or `langgraph` | `spring` |
-| `MCP_ENABLED` | Optional MCP Streamable HTTP adapter | `false` |
+| `PDF_FONT_PATH` | CJK font override for PDF rendering | auto-detect when possible |
+| `WORKFLOW_ENGINE` | `spring` or `langgraph` | `spring` |
+| `LANGGRAPH_BASE_URL` | Optional LangGraph service URL | `http://localhost:8090` |
+| `MCP_ENABLED` | Optional MCP adapter switch | `false` |
+| `MCP_ENDPOINT` | Optional MCP endpoint | empty |
+| `MCP_ALLOWED_TOOLS` | Optional MCP tool allowlist | empty |
+| `MCP_ALLOWED_AGENTS` | Optional MCP Agent allowlist | job/resume/interview agents |
 
-## Quality Checks
+## Quality checks
 
 Backend:
 
 ```bash
-JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw test
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --batch-mode --no-transfer-progress verify
 ```
 
 Frontend:
 
 ```bash
 cd frontend
-npm run build
+npm run check
+npm audit --omit=dev --audit-level=high
 ```
 
 Prompt regression gate:
@@ -277,9 +249,9 @@ Prompt regression gate:
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -Dtest=PromptRegressionSuiteTest test
 ```
 
-## Optional LangGraph Workflow Engine
+## Optional LangGraph workflow engine
 
-Spring is the default stable workflow engine. To run the optional LangGraph orchestrator:
+Spring is the default stable workflow engine. To try the optional LangGraph orchestrator:
 
 ```bash
 docker compose --profile langgraph up -d langgraph
@@ -288,31 +260,28 @@ export LANGGRAPH_BASE_URL=http://localhost:8090
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw spring-boot:run
 ```
 
-If LangGraph is unavailable or returns an invalid plan, Spring fallback is used by default.
+If LangGraph is unavailable or returns an invalid plan, the Spring workflow fallback is used.
 
-## Repository Notes
+## Repository notes
 
-Local runtime data is intentionally ignored:
+Do not commit local runtime data or secrets:
 
 - `.env`
 - `data/`
 - `target/`
 - `frontend/dist/`
-- `INTERVIEW_GUIDE.md`
+- uploaded resumes
+- exported PDFs
+- real API keys
+- personal interview notes
 
-Do not commit uploaded resumes, exported PDFs, real API keys, or local interview notes.
-
-## Documentation
-
-- [Testing strategy](docs/testing.md)
-- [Security review](docs/security-review.md)
-- [Troubleshooting runbook](docs/runbook.md)
-- [Release checklist](docs/release-checklist.md)
+The `docs/` directory is treated as local preparation material and is intentionally ignored for GitHub upload in this workspace.
 
 ## Roadmap
 
-- Richer task recovery and partial report UX.
-- Configurable Agent workflow templates.
-- More visual analytics for interview score trends.
-- Optional speech input and spoken mock interviews.
-- Production-ready object storage for uploaded files and PDF exports.
+- Strengthen final-report verifier from artifact-existence checks to deeper content/evidence checks.
+- Add a real remote embedding provider path beside the deterministic local embedding implementation.
+- Improve task recovery UX for partially completed workflows.
+- Add configurable Agent workflow templates.
+- Add richer visual analytics for interview score trends.
+- Add production object storage for uploads and PDF exports.
